@@ -58,6 +58,7 @@ class ActiveSlamExplorer:
         self.local_target = None
         self.blacklist = {}
         self.recent_patrol_goals = collections.deque(maxlen=10)
+        self.visited_positions = collections.deque(maxlen=120)
 
         self.free_threshold = int(rospy.get_param("~free_threshold", 35))
         self.occupied_threshold = int(rospy.get_param("~occupied_threshold", 58))
@@ -78,7 +79,9 @@ class ActiveSlamExplorer:
         self.completion_no_frontier_cycles = int(rospy.get_param("~completion_no_frontier_cycles", 6))
         self.completion_stable_seconds = rospy.Duration(rospy.get_param("~completion_stable_seconds", 12.0))
         self.completion_min_runtime = rospy.Duration(rospy.get_param("~completion_min_runtime", 45.0))
+        self.completion_min_travel_distance = rospy.get_param("~completion_min_travel_distance", 24.0)
         self.completion_known_growth_cells = int(rospy.get_param("~completion_known_growth_cells", 20))
+        self.visit_record_distance = rospy.get_param("~visit_record_distance", 0.75)
         self.home_reached_distance = rospy.get_param("~home_reached_distance", 0.48)
         self.home_timeout = rospy.Duration(rospy.get_param("~home_timeout", 90.0))
         self.max_bfs_cells = int(rospy.get_param("~max_bfs_cells", 90000))
@@ -156,6 +159,9 @@ class ActiveSlamExplorer:
         self.last_frontier_cell_count = 0
         self.returning_home = False
         self.mapping_completed = False
+        self.total_travel_distance = 0.0
+        self.travel_reference = None
+        self.last_visit_position = None
         self.completed_pub.publish(False)
 
         self.timer = rospy.Timer(rospy.Duration(1.0 / max(1.0, self.control_rate)), self.update)
@@ -582,6 +588,19 @@ class ActiveSlamExplorer:
         stride = max(2, self.patrol_cell_stride)
         best = None
         best_score = -float("inf")
+        integral_width = width + 1
+        unknown_integral = [0] * ((self.map_msg.info.height + 1) * integral_width)
+        for y in range(self.map_msg.info.height):
+            row_sum = 0
+            source_row = y * width
+            integral_row = (y + 1) * integral_width
+            previous_row = y * integral_width
+            for x in range(width):
+                if data[source_row + x] < 0:
+                    row_sum += 1
+                unknown_integral[integral_row + x + 1] = (
+                    unknown_integral[previous_row + x + 1] + row_sum
+                )
 
         for cell in distance:
             if cell[0] % stride or cell[1] % stride:
@@ -590,16 +609,16 @@ class ActiveSlamExplorer:
             if path_cost < self.patrol_min_distance or path_cost > self.patrol_max_distance:
                 continue
 
-            unknown_gain = 0
-            for dy in range(-radius, radius + 1):
-                ny = cell[1] + dy
-                if ny < 0 or ny >= self.map_msg.info.height:
-                    continue
-                row = ny * width
-                for dx in range(-radius, radius + 1):
-                    nx = cell[0] + dx
-                    if 0 <= nx < width and data[row + nx] < 0:
-                        unknown_gain += 1
+            x0 = max(0, cell[0] - radius)
+            y0 = max(0, cell[1] - radius)
+            x1 = min(width - 1, cell[0] + radius)
+            y1 = min(self.map_msg.info.height - 1, cell[1] + radius)
+            unknown_gain = (
+                unknown_integral[(y1 + 1) * integral_width + x1 + 1] -
+                unknown_integral[y0 * integral_width + x1 + 1] -
+                unknown_integral[(y1 + 1) * integral_width + x0] +
+                unknown_integral[y0 * integral_width + x0]
+            )
 
             wx, wy = self.cell_to_world(cell)
             key = (round(wx, 1), round(wy, 1))
@@ -613,11 +632,15 @@ class ActiveSlamExplorer:
                     repeat_penalty,
                     clamp(1.4 - math.hypot(wx - old_x, wy - old_y), 0.0, 1.4),
                 )
+            nearest_visit = 2.5
+            for old_x, old_y in self.visited_positions:
+                nearest_visit = min(nearest_visit, math.hypot(wx - old_x, wy - old_y))
             score = (
-                0.16 * unknown_gain +
-                0.34 * min(path_cost, 4.5) +
+                0.55 * math.sqrt(unknown_gain) +
+                0.38 * min(path_cost, 5.5) +
                 0.40 * alignment -
-                2.2 * repeat_penalty
+                2.8 * repeat_penalty +
+                0.85 * min(nearest_visit, 2.5)
             )
             if self.current_goal_cell is not None and self.current_goal_source == "patrol":
                 goal_delta = math.hypot(
@@ -646,8 +669,25 @@ class ActiveSlamExplorer:
         return (
             self.no_frontier_cycles >= self.completion_no_frontier_cycles and
             now - self.mapping_start_time >= self.completion_min_runtime and
-            now - self.last_map_growth_time >= self.completion_stable_seconds
+            now - self.last_map_growth_time >= self.completion_stable_seconds and
+            self.total_travel_distance >= self.completion_min_travel_distance
         )
+
+    def update_coverage_progress(self, pose):
+        position = self.motion_position(pose)
+        if self.travel_reference is not None:
+            step = math.hypot(
+                position[0] - self.travel_reference[0],
+                position[1] - self.travel_reference[1],
+            )
+            if step < 0.8:
+                self.total_travel_distance += step
+        self.travel_reference = position
+        if (self.last_visit_position is None or math.hypot(
+                position[0] - self.last_visit_position[0],
+                position[1] - self.last_visit_position[1]) >= self.visit_record_distance):
+            self.visited_positions.append(position)
+            self.last_visit_position = position
 
     def publish_frontiers(self, clusters):
         msg = MarkerArray()
@@ -1050,6 +1090,8 @@ class ActiveSlamExplorer:
             self.update_navigation(pose)
 
     def update_navigation(self, pose):
+
+        self.update_coverage_progress(pose)
 
         if self.home_position is None:
             self.home_position = pose[:2]

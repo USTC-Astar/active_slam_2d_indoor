@@ -86,27 +86,29 @@
       pkg="indoor_cartographer_demo" type="active_slam_explorer.py" output="screen">
     <param name="control_rate" value="24.0" />
     <param name="replan_interval" value="2.4" />
-    <param name="goal_timeout" value="15.0" />
+    <param name="goal_timeout" value="20.0" />
     <param name="lookahead_distance" value="1.65" />
     <param name="min_local_target_distance" value="0.42" />
     <param name="goal_reached_distance" value="0.52" />
     <param name="inflate_radius" value="0.23" />
     <param name="costmap_radius" value="0.52" />
     <param name="costmap_weight" value="0.10" />
-    <param name="min_frontier_cells" value="8" />
-    <param name="min_frontier_path_distance" value="1.1" />
+    <param name="min_frontier_cells" value="4" />
+    <param name="min_frontier_path_distance" value="0.55" />
     <param name="frontier_gain_weight" value="2.8" />
     <param name="frontier_distance_weight" value="0.36" />
     <param name="frontier_far_bonus" value="0.28" />
     <param name="frontier_goal_hysteresis" value="3.2" />
-    <param name="patrol_min_distance" value="1.6" />
-    <param name="patrol_max_distance" value="4.8" />
-    <param name="patrol_unknown_radius" value="5" />
-    <param name="patrol_cell_stride" value="4" />
-    <param name="completion_no_frontier_cycles" value="6" />
-    <param name="completion_stable_seconds" value="12.0" />
-    <param name="completion_min_runtime" value="45.0" />
+    <param name="patrol_min_distance" value="1.2" />
+    <param name="patrol_max_distance" value="6.5" />
+    <param name="patrol_unknown_radius" value="12" />
+    <param name="patrol_cell_stride" value="5" />
+    <param name="completion_no_frontier_cycles" value="10" />
+    <param name="completion_stable_seconds" value="18.0" />
+    <param name="completion_min_runtime" value="$(eval '70.0' if arg('scene') == 'quick' else '110.0')" />
+    <param name="completion_min_travel_distance" value="$(eval '28.0' if arg('scene') == 'quick' else '42.0')" />
     <param name="completion_known_growth_cells" value="20" />
+    <param name="visit_record_distance" value="0.75" />
     <param name="home_reached_distance" value="0.48" />
     <param name="home_timeout" value="90.0" />
     <param name="cruise_speed" value="0.82" />

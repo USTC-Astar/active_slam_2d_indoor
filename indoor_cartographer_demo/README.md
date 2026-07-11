@@ -34,7 +34,8 @@ path, the current target, and the lower-left camera view.
 
 Autonomous exploration now defaults to a lightweight Active SLAM node instead
 of `move_base + explore_lite`. `active_slam_explorer.py` reads `/map`, `/scan`,
-and TF, runs a reachable-frontier BFS in known free space, follows a lookahead
+and TF, runs reachable-frontier detection plus cost-aware Dijkstra planning in
+known free space, follows a lookahead
 point on that path, and falls back to fast open-space probing when the initial
 frontiers are too close. This keeps the loop small and responsive for short
 Cartographer mapping checks.
@@ -54,11 +55,15 @@ and forces a fresh global frontier plan.
 The compact robot is approximately `0.34 m` long and `0.335 m` wide across the
 wheels. Planning uses a graded costmap on `/active_slam/costmap`: lethal cells
 cover the physical footprint, while a wider decaying cost band keeps Dijkstra
-paths away from walls. The RViz costmap display is disabled by default so it
-does not cover the occupancy map; enable `Active SLAM Costmap` only when tuning.
+paths away from walls. RViz shows it as `Navigation Costmap` with low alpha so
+the occupancy map remains readable. Cartographer submaps, trajectory nodes, and
+constraints remain available but disabled by default to avoid visual clutter.
 
 Exploration completion requires repeated plans with no useful reachable
-frontier, a minimum mapping runtime, and a stable known-cell count. The robot
+frontier, a minimum mapping runtime, a minimum accumulated travel distance, and
+a stable known-cell count. Patrol scoring uses a large unknown-area window and
+recorded visit positions to prefer rooms and corridors that have seen less
+coverage. The robot
 then plans back to its recorded start position. At home it publishes
 `/active_slam/completed=True` and continues publishing a zero `/cmd_vel`.
 Dead ends trigger a longer checked reverse before turning and replanning.
@@ -90,6 +95,6 @@ The old navigation stack is still available for comparison:
 ./run_indoor_mapping_demo.sh active_slam:=false navigation:=true explore:=true
 ```
 
-The RViz costmap layers are available but disabled by default to keep the map
-view clean. Enable `Global Costmap` or `Local Costmap` in Displays when tuning
-navigation clearance.
+The active costmap is the `Navigation Costmap` display. The legacy move_base
+local costmap remains disabled and is only relevant when launching the optional
+navigation stack.
