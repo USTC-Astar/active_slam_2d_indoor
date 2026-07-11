@@ -1,0 +1,45 @@
+DWAPlannerROS:
+  odom_topic: /odom
+  global_frame_id: map
+
+  max_vel_x: 1.15
+  min_vel_x: 0.16
+  max_vel_y: 0.0
+  min_vel_y: 0.0
+  max_vel_trans: 1.15
+  min_vel_trans: 0.12
+  max_vel_theta: 2.05
+  min_vel_theta: 0.15
+
+  acc_lim_x: 2.8
+  acc_lim_y: 0.0
+  acc_lim_theta: 4.4
+
+  holonomic_robot: false
+  sim_time: 1.45
+  sim_granularity: 0.025
+  angular_sim_granularity: 0.04
+  vx_samples: 18
+  vy_samples: 1
+  vtheta_samples: 28
+
+  path_distance_bias: 22.0
+  goal_distance_bias: 34.0
+  occdist_scale: 0.060
+  forward_point_distance: 0.50
+  stop_time_buffer: 0.18
+  scaling_speed: 0.45
+  max_scaling_factor: 0.24
+
+  xy_goal_tolerance: 0.48
+  yaw_goal_tolerance: 1.57
+  latch_xy_goal_tolerance: true
+
+  prune_plan: true
+  oscillation_reset_dist: 0.10
+  oscillation_reset_angle: 0.30
+  trans_stopped_vel: 0.08
+  theta_stopped_vel: 0.10
+
+  publish_traj_pc: true
+  publish_cost_grid_pc: true

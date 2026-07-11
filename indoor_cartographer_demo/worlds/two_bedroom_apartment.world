@@ -1,0 +1,197 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <world name="two_bedroom_apartment">
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <physics name="ode_physics" default="0" type="ode">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>1000</real_time_update_rate>
+    </physics>
+
+    <scene>
+      <ambient>0.62 0.62 0.62 1</ambient>
+      <background>0.78 0.84 0.90 1</background>
+      <shadows>true</shadows>
+    </scene>
+
+    <light name="living_room_area_light" type="point">
+      <pose>-3.5 -2.8 2.45 0 0 0</pose>
+      <diffuse>0.95 0.88 0.72 1</diffuse>
+      <specular>0.25 0.23 0.20 1</specular>
+      <attenuation>
+        <range>9</range>
+        <constant>0.6</constant>
+        <linear>0.03</linear>
+        <quadratic>0.01</quadratic>
+      </attenuation>
+    </light>
+
+    <light name="north_room_light" type="point">
+      <pose>-0.4 3.9 2.45 0 0 0</pose>
+      <diffuse>0.88 0.92 1.00 1</diffuse>
+      <specular>0.20 0.20 0.22 1</specular>
+      <attenuation>
+        <range>8</range>
+        <constant>0.7</constant>
+        <linear>0.035</linear>
+        <quadratic>0.01</quadratic>
+      </attenuation>
+    </light>
+
+    <light name="kitchen_bath_light" type="point">
+      <pose>5.0 -1.4 2.45 0 0 0</pose>
+      <diffuse>1.0 0.94 0.82 1</diffuse>
+      <specular>0.25 0.25 0.23 1</specular>
+      <attenuation>
+        <range>8</range>
+        <constant>0.7</constant>
+        <linear>0.035</linear>
+        <quadratic>0.01</quadratic>
+      </attenuation>
+    </light>
+
+    <model name="apartment_shell_and_furnishings">
+      <static>true</static>
+
+      <!-- Floor bands: living room, kitchen, bedrooms, and bathroom. -->
+      <link name="living_floor">
+        <pose>-3.25 -2.5 0.005 0 0 0</pose>
+        <collision name="collision"><geometry><box><size>9.5 7.0 0.01</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>9.5 7.0 0.01</size></box></geometry>
+          <material><ambient>0.47 0.41 0.34 1</ambient><diffuse>0.55 0.48 0.40 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="kitchen_floor">
+        <pose>4.75 -2.5 0.011 0 0 0</pose>
+        <collision name="collision"><geometry><box><size>6.5 7.0 0.01</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>6.5 7.0 0.01</size></box></geometry>
+          <material><ambient>0.52 0.54 0.53 1</ambient><diffuse>0.64 0.66 0.64 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="bedroom_one_floor">
+        <pose>-5.35 3.5 0.017 0 0 0</pose>
+        <collision name="collision"><geometry><box><size>5.3 5.0 0.01</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>5.3 5.0 0.01</size></box></geometry>
+          <material><ambient>0.43 0.37 0.31 1</ambient><diffuse>0.50 0.43 0.36 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="bedroom_two_floor">
+        <pose>0.0 3.5 0.017 0 0 0</pose>
+        <collision name="collision"><geometry><box><size>5.4 5.0 0.01</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>5.4 5.0 0.01</size></box></geometry>
+          <material><ambient>0.40 0.36 0.34 1</ambient><diffuse>0.50 0.45 0.42 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="bathroom_floor">
+        <pose>5.35 3.5 0.019 0 0 0</pose>
+        <collision name="collision"><geometry><box><size>5.3 5.0 0.01</size></box></geometry></collision>
+        <visual name="visual">
+          <geometry><box><size>5.3 5.0 0.01</size></box></geometry>
+          <material><ambient>0.62 0.66 0.67 1</ambient><diffuse>0.76 0.80 0.81 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!-- Outer walls. -->
+      <link name="wall_north">
+        <pose>0 6.0 1.3 0 0 0</pose>
+        <collision name="collision"><geometry><box><size>16.2 0.16 2.6</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>16.2 0.16 2.6</size></box></geometry><material><ambient>0.78 0.76 0.70 1</ambient><diffuse>0.86 0.84 0.78 1</diffuse></material></visual>
+      </link>
+      <link name="wall_south">
+        <pose>0 -6.0 1.3 0 0 0</pose>
+        <collision name="collision"><geometry><box><size>16.2 0.16 2.6</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>16.2 0.16 2.6</size></box></geometry><material><ambient>0.78 0.76 0.70 1</ambient><diffuse>0.86 0.84 0.78 1</diffuse></material></visual>
+      </link>
+      <link name="wall_west">
+        <pose>-8.0 0 1.3 0 0 0</pose>
+        <collision name="collision"><geometry><box><size>0.16 12.2 2.6</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.16 12.2 2.6</size></box></geometry><material><ambient>0.78 0.76 0.70 1</ambient><diffuse>0.86 0.84 0.78 1</diffuse></material></visual>
+      </link>
+      <link name="wall_east">
+        <pose>8.0 0 1.3 0 0 0</pose>
+        <collision name="collision"><geometry><box><size>0.16 12.2 2.6</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.16 12.2 2.6</size></box></geometry><material><ambient>0.78 0.76 0.70 1</ambient><diffuse>0.86 0.84 0.78 1</diffuse></material></visual>
+      </link>
+
+      <!-- Room dividers with door openings. -->
+      <link name="north_divider_1"><pose>-6.9 1.0 1.3 0 0 0</pose><collision name="collision"><geometry><box><size>2.2 0.16 2.6</size></box></geometry></collision><visual name="visual"><geometry><box><size>2.2 0.16 2.6</size></box></geometry><material><ambient>0.76 0.75 0.70 1</ambient><diffuse>0.84 0.83 0.78 1</diffuse></material></visual></link>
+      <link name="north_divider_2"><pose>-3.65 1.0 1.3 0 0 0</pose><collision name="collision"><geometry><box><size>1.9 0.16 2.6</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.9 0.16 2.6</size></box></geometry><material><ambient>0.76 0.75 0.70 1</ambient><diffuse>0.84 0.83 0.78 1</diffuse></material></visual></link>
+      <link name="north_divider_3"><pose>-1.7 1.0 1.3 0 0 0</pose><collision name="collision"><geometry><box><size>2.0 0.16 2.6</size></box></geometry></collision><visual name="visual"><geometry><box><size>2.0 0.16 2.6</size></box></geometry><material><ambient>0.76 0.75 0.70 1</ambient><diffuse>0.84 0.83 0.78 1</diffuse></material></visual></link>
+      <link name="north_divider_4"><pose>1.6 1.0 1.3 0 0 0</pose><collision name="collision"><geometry><box><size>2.2 0.16 2.6</size></box></geometry></collision><visual name="visual"><geometry><box><size>2.2 0.16 2.6</size></box></geometry><material><ambient>0.76 0.75 0.70 1</ambient><diffuse>0.84 0.83 0.78 1</diffuse></material></visual></link>
+      <link name="north_divider_5"><pose>3.05 1.0 1.3 0 0 0</pose><collision name="collision"><geometry><box><size>0.7 0.16 2.6</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.7 0.16 2.6</size></box></geometry><material><ambient>0.76 0.75 0.70 1</ambient><diffuse>0.84 0.83 0.78 1</diffuse></material></visual></link>
+      <link name="north_divider_6"><pose>6.3 1.0 1.3 0 0 0</pose><collision name="collision"><geometry><box><size>3.4 0.16 2.6</size></box></geometry></collision><visual name="visual"><geometry><box><size>3.4 0.16 2.6</size></box></geometry><material><ambient>0.76 0.75 0.70 1</ambient><diffuse>0.84 0.83 0.78 1</diffuse></material></visual></link>
+      <link name="bedroom_split_wall"><pose>-2.7 3.5 1.3 0 0 0</pose><collision name="collision"><geometry><box><size>0.16 5.0 2.6</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.16 5.0 2.6</size></box></geometry><material><ambient>0.76 0.75 0.70 1</ambient><diffuse>0.84 0.83 0.78 1</diffuse></material></visual></link>
+      <link name="bath_split_wall"><pose>2.7 3.5 1.3 0 0 0</pose><collision name="collision"><geometry><box><size>0.16 5.0 2.6</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.16 5.0 2.6</size></box></geometry><material><ambient>0.76 0.75 0.70 1</ambient><diffuse>0.84 0.83 0.78 1</diffuse></material></visual></link>
+      <link name="kitchen_divider_lower"><pose>1.5 -4.6 1.3 0 0 0</pose><collision name="collision"><geometry><box><size>0.16 2.8 2.6</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.16 2.8 2.6</size></box></geometry><material><ambient>0.76 0.75 0.70 1</ambient><diffuse>0.84 0.83 0.78 1</diffuse></material></visual></link>
+      <link name="kitchen_divider_upper"><pose>1.5 -0.3 1.3 0 0 0</pose><collision name="collision"><geometry><box><size>0.16 2.6 2.6</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.16 2.6 2.6</size></box></geometry><material><ambient>0.76 0.75 0.70 1</ambient><diffuse>0.84 0.83 0.78 1</diffuse></material></visual></link>
+
+      <!-- Open doors and trim. -->
+      <link name="bedroom_one_open_door"><pose>-5.8 1.2 1.05 0 0 0.58</pose><collision name="collision"><geometry><box><size>0.08 0.9 2.1</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.08 0.9 2.1</size></box></geometry><material><ambient>0.46 0.25 0.12 1</ambient><diffuse>0.58 0.33 0.16 1</diffuse></material></visual></link>
+      <link name="bedroom_two_open_door"><pose>-0.65 1.2 1.05 0 0 0.52</pose><collision name="collision"><geometry><box><size>0.08 0.9 2.1</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.08 0.9 2.1</size></box></geometry><material><ambient>0.46 0.25 0.12 1</ambient><diffuse>0.58 0.33 0.16 1</diffuse></material></visual></link>
+      <link name="bath_open_door"><pose>3.4 1.2 1.05 0 0 0.50</pose><collision name="collision"><geometry><box><size>0.08 0.9 2.1</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.08 0.9 2.1</size></box></geometry><material><ambient>0.46 0.25 0.12 1</ambient><diffuse>0.58 0.33 0.16 1</diffuse></material></visual></link>
+      <link name="kitchen_open_door"><pose>1.68 -3.1 1.05 0 0 -0.72</pose><collision name="collision"><geometry><box><size>0.08 0.9 2.1</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.08 0.9 2.1</size></box></geometry><material><ambient>0.46 0.25 0.12 1</ambient><diffuse>0.58 0.33 0.16 1</diffuse></material></visual></link>
+
+      <!-- Windows. -->
+      <link name="living_west_window"><pose>-7.91 -2.8 1.45 0 0 0</pose><visual name="visual"><geometry><box><size>0.03 2.0 0.9</size></box></geometry><material><ambient>0.38 0.55 0.68 0.55</ambient><diffuse>0.48 0.70 0.85 0.55</diffuse><transparency>0.35</transparency></material></visual></link>
+      <link name="bedroom_one_window"><pose>-5.4 5.91 1.45 0 0 0</pose><visual name="visual"><geometry><box><size>2.0 0.03 0.9</size></box></geometry><material><ambient>0.38 0.55 0.68 0.55</ambient><diffuse>0.48 0.70 0.85 0.55</diffuse><transparency>0.35</transparency></material></visual></link>
+      <link name="bedroom_two_window"><pose>0.0 5.91 1.45 0 0 0</pose><visual name="visual"><geometry><box><size>2.0 0.03 0.9</size></box></geometry><material><ambient>0.38 0.55 0.68 0.55</ambient><diffuse>0.48 0.70 0.85 0.55</diffuse><transparency>0.35</transparency></material></visual></link>
+      <link name="kitchen_east_window"><pose>7.91 -2.2 1.45 0 0 0</pose><visual name="visual"><geometry><box><size>0.03 1.8 0.9</size></box></geometry><material><ambient>0.38 0.55 0.68 0.55</ambient><diffuse>0.48 0.70 0.85 0.55</diffuse><transparency>0.35</transparency></material></visual></link>
+
+      <!-- Living room furniture. -->
+      <link name="living_rug"><pose>-3.7 -3.0 0.035 0 0 0</pose><visual name="visual"><geometry><box><size>3.8 2.4 0.03</size></box></geometry><material><ambient>0.14 0.31 0.35 1</ambient><diffuse>0.19 0.43 0.48 1</diffuse></material></visual></link>
+      <link name="sofa_main"><pose>-6.15 -2.0 0.42 0 0 1.5708</pose><collision name="collision"><geometry><box><size>2.4 0.82 0.72</size></box></geometry></collision><visual name="visual"><geometry><box><size>2.4 0.82 0.72</size></box></geometry><material><ambient>0.21 0.25 0.30 1</ambient><diffuse>0.30 0.35 0.42 1</diffuse></material></visual></link>
+      <link name="sofa_chaise"><pose>-5.2 -4.0 0.36 0 0 0</pose><collision name="collision"><geometry><box><size>1.8 0.8 0.62</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.8 0.8 0.62</size></box></geometry><material><ambient>0.21 0.25 0.30 1</ambient><diffuse>0.30 0.35 0.42 1</diffuse></material></visual></link>
+      <link name="coffee_table"><pose>-3.75 -3.0 0.23 0 0 0</pose><collision name="collision"><geometry><box><size>1.25 0.65 0.18</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.25 0.65 0.18</size></box></geometry><material><ambient>0.38 0.22 0.11 1</ambient><diffuse>0.52 0.31 0.16 1</diffuse></material></visual></link>
+      <link name="tv_console"><pose>-1.05 -3.0 0.32 0 0 1.5708</pose><collision name="collision"><geometry><box><size>1.7 0.35 0.42</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.7 0.35 0.42</size></box></geometry><material><ambient>0.22 0.18 0.15 1</ambient><diffuse>0.34 0.27 0.22 1</diffuse></material></visual></link>
+      <link name="tv_panel"><pose>-0.83 -3.0 1.10 0 0 1.5708</pose><collision name="collision"><geometry><box><size>1.45 0.06 0.82</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.45 0.06 0.82</size></box></geometry><material><ambient>0.01 0.01 0.012 1</ambient><diffuse>0.02 0.02 0.025 1</diffuse></material></visual></link>
+      <link name="dining_table"><pose>-0.8 -5.05 0.40 0 0 0</pose><collision name="collision"><geometry><box><size>1.35 0.85 0.12</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.35 0.85 0.12</size></box></geometry><material><ambient>0.50 0.30 0.15 1</ambient><diffuse>0.62 0.39 0.20 1</diffuse></material></visual></link>
+      <link name="dining_chair_1"><pose>-1.65 -5.05 0.35 0 0 0</pose><collision name="collision"><geometry><box><size>0.35 0.45 0.62</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.35 0.45 0.62</size></box></geometry><material><ambient>0.34 0.20 0.10 1</ambient><diffuse>0.48 0.29 0.14 1</diffuse></material></visual></link>
+      <link name="dining_chair_2"><pose>0.05 -5.05 0.35 0 0 0</pose><collision name="collision"><geometry><box><size>0.35 0.45 0.62</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.35 0.45 0.62</size></box></geometry><material><ambient>0.34 0.20 0.10 1</ambient><diffuse>0.48 0.29 0.14 1</diffuse></material></visual></link>
+
+      <!-- Bedroom one furniture. -->
+      <link name="bedroom_one_bed"><pose>-6.75 4.15 0.35 0 0 0</pose><collision name="collision"><geometry><box><size>1.7 2.15 0.48</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.7 2.15 0.48</size></box></geometry><material><ambient>0.47 0.48 0.58 1</ambient><diffuse>0.58 0.60 0.72 1</diffuse></material></visual></link>
+      <link name="bedroom_one_pillow"><pose>-6.75 5.05 0.68 0 0 0</pose><collision name="collision"><geometry><box><size>1.20 0.34 0.16</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.20 0.34 0.16</size></box></geometry><material><ambient>0.90 0.88 0.82 1</ambient><diffuse>0.98 0.96 0.90 1</diffuse></material></visual></link>
+      <link name="bedroom_one_wardrobe"><pose>-3.45 4.85 0.95 0 0 0</pose><collision name="collision"><geometry><box><size>1.0 0.52 1.9</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.0 0.52 1.9</size></box></geometry><material><ambient>0.42 0.25 0.13 1</ambient><diffuse>0.54 0.33 0.17 1</diffuse></material></visual></link>
+      <link name="bedroom_one_desk"><pose>-3.6 2.3 0.42 0 0 0</pose><collision name="collision"><geometry><box><size>1.15 0.55 0.22</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.15 0.55 0.22</size></box></geometry><material><ambient>0.48 0.30 0.16 1</ambient><diffuse>0.60 0.38 0.20 1</diffuse></material></visual></link>
+      <link name="bedroom_one_nightstand"><pose>-7.15 2.85 0.36 0 0 0</pose><collision name="collision"><geometry><box><size>0.45 0.45 0.45</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.45 0.45 0.45</size></box></geometry><material><ambient>0.42 0.25 0.13 1</ambient><diffuse>0.54 0.33 0.17 1</diffuse></material></visual></link>
+
+      <!-- Bedroom two furniture. -->
+      <link name="bedroom_two_bed"><pose>1.35 4.25 0.35 0 0 0</pose><collision name="collision"><geometry><box><size>1.75 2.05 0.48</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.75 2.05 0.48</size></box></geometry><material><ambient>0.36 0.45 0.50 1</ambient><diffuse>0.46 0.56 0.62 1</diffuse></material></visual></link>
+      <link name="bedroom_two_pillow"><pose>1.35 5.10 0.68 0 0 0</pose><collision name="collision"><geometry><box><size>1.20 0.34 0.16</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.20 0.34 0.16</size></box></geometry><material><ambient>0.90 0.88 0.82 1</ambient><diffuse>0.98 0.96 0.90 1</diffuse></material></visual></link>
+      <link name="bedroom_two_bookshelf"><pose>-1.95 4.70 0.95 0 0 0</pose><collision name="collision"><geometry><box><size>0.75 0.45 1.9</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.75 0.45 1.9</size></box></geometry><material><ambient>0.37 0.24 0.14 1</ambient><diffuse>0.50 0.33 0.19 1</diffuse></material></visual></link>
+      <link name="bedroom_two_desk"><pose>-1.7 2.25 0.42 0 0 0</pose><collision name="collision"><geometry><box><size>1.10 0.55 0.22</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.10 0.55 0.22</size></box></geometry><material><ambient>0.48 0.30 0.16 1</ambient><diffuse>0.60 0.38 0.20 1</diffuse></material></visual></link>
+      <link name="bedroom_two_round_rug"><pose>-0.15 3.0 0.04 0 0 0</pose><visual name="visual"><geometry><cylinder><radius>0.8</radius><length>0.03</length></cylinder></geometry><material><ambient>0.56 0.22 0.20 1</ambient><diffuse>0.70 0.31 0.28 1</diffuse></material></visual></link>
+
+      <!-- Kitchen. -->
+      <link name="kitchen_counter_east"><pose>7.25 -3.2 0.45 0 0 0</pose><collision name="collision"><geometry><box><size>0.75 4.6 0.9</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.75 4.6 0.9</size></box></geometry><material><ambient>0.45 0.43 0.38 1</ambient><diffuse>0.58 0.55 0.49 1</diffuse></material></visual></link>
+      <link name="kitchen_counter_south"><pose>4.75 -5.35 0.45 0 0 0</pose><collision name="collision"><geometry><box><size>4.5 0.75 0.9</size></box></geometry></collision><visual name="visual"><geometry><box><size>4.5 0.75 0.9</size></box></geometry><material><ambient>0.45 0.43 0.38 1</ambient><diffuse>0.58 0.55 0.49 1</diffuse></material></visual></link>
+      <link name="kitchen_island"><pose>4.2 -2.95 0.47 0 0 0</pose><collision name="collision"><geometry><box><size>1.5 0.8 0.94</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.5 0.8 0.94</size></box></geometry><material><ambient>0.35 0.38 0.39 1</ambient><diffuse>0.46 0.50 0.51 1</diffuse></material></visual></link>
+      <link name="refrigerator"><pose>6.85 -0.25 0.9 0 0 0</pose><collision name="collision"><geometry><box><size>0.85 0.75 1.8</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.85 0.75 1.8</size></box></geometry><material><ambient>0.72 0.74 0.74 1</ambient><diffuse>0.86 0.88 0.88 1</diffuse></material></visual></link>
+      <link name="stove_top"><pose>6.0 -5.0 0.93 0 0 0</pose><collision name="collision"><geometry><box><size>0.85 0.55 0.08</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.85 0.55 0.08</size></box></geometry><material><ambient>0.03 0.03 0.035 1</ambient><diffuse>0.05 0.05 0.06 1</diffuse></material></visual></link>
+      <link name="sink_basin"><pose>7.27 -2.65 0.96 0 0 0</pose><collision name="collision"><geometry><box><size>0.58 0.72 0.12</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.58 0.72 0.12</size></box></geometry><material><ambient>0.50 0.54 0.55 1</ambient><diffuse>0.66 0.70 0.71 1</diffuse></material></visual></link>
+      <link name="kitchen_bar_stool_1"><pose>3.55 -1.9 0.44 0 0 0</pose><collision name="collision"><geometry><cylinder><radius>0.22</radius><length>0.58</length></cylinder></geometry></collision><visual name="visual"><geometry><cylinder><radius>0.22</radius><length>0.58</length></cylinder></geometry><material><ambient>0.25 0.25 0.24 1</ambient><diffuse>0.36 0.36 0.34 1</diffuse></material></visual></link>
+      <link name="kitchen_bar_stool_2"><pose>4.85 -1.9 0.44 0 0 0</pose><collision name="collision"><geometry><cylinder><radius>0.22</radius><length>0.58</length></cylinder></geometry></collision><visual name="visual"><geometry><cylinder><radius>0.22</radius><length>0.58</length></cylinder></geometry><material><ambient>0.25 0.25 0.24 1</ambient><diffuse>0.36 0.36 0.34 1</diffuse></material></visual></link>
+
+      <!-- Bathroom. -->
+      <link name="bathtub"><pose>6.65 4.55 0.36 0 0 0</pose><collision name="collision"><geometry><box><size>1.95 0.85 0.62</size></box></geometry></collision><visual name="visual"><geometry><box><size>1.95 0.85 0.62</size></box></geometry><material><ambient>0.82 0.85 0.85 1</ambient><diffuse>0.96 0.98 0.98 1</diffuse></material></visual></link>
+      <link name="toilet_base"><pose>3.55 4.75 0.26 0 0 0</pose><collision name="collision"><geometry><cylinder><radius>0.28</radius><length>0.42</length></cylinder></geometry></collision><visual name="visual"><geometry><cylinder><radius>0.28</radius><length>0.42</length></cylinder></geometry><material><ambient>0.86 0.88 0.88 1</ambient><diffuse>0.98 1.0 1.0 1</diffuse></material></visual></link>
+      <link name="toilet_tank"><pose>3.55 5.28 0.72 0 0 0</pose><collision name="collision"><geometry><box><size>0.65 0.18 0.55</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.65 0.18 0.55</size></box></geometry><material><ambient>0.86 0.88 0.88 1</ambient><diffuse>0.98 1.0 1.0 1</diffuse></material></visual></link>
+      <link name="vanity"><pose>3.55 2.15 0.45 0 0 0</pose><collision name="collision"><geometry><box><size>0.95 0.55 0.9</size></box></geometry></collision><visual name="visual"><geometry><box><size>0.95 0.55 0.9</size></box></geometry><material><ambient>0.38 0.34 0.30 1</ambient><diffuse>0.50 0.45 0.40 1</diffuse></material></visual></link>
+      <link name="sink_round"><pose>3.55 2.15 0.96 0 0 0</pose><collision name="collision"><geometry><cylinder><radius>0.34</radius><length>0.12</length></cylinder></geometry></collision><visual name="visual"><geometry><cylinder><radius>0.34</radius><length>0.12</length></cylinder></geometry><material><ambient>0.84 0.86 0.86 1</ambient><diffuse>0.98 1.0 1.0 1</diffuse></material></visual></link>
+      <link name="bath_mirror"><pose>3.55 1.88 1.55 0 0 0</pose><visual name="visual"><geometry><box><size>0.85 0.04 0.75</size></box></geometry><material><ambient>0.35 0.45 0.50 1</ambient><diffuse>0.60 0.72 0.78 1</diffuse><transparency>0.15</transparency></material></visual></link>
+
+      <!-- Small plants and lamp volumes for extra visual features. -->
+      <link name="living_planter"><pose>-7.2 -5.05 0.28 0 0 0</pose><collision name="collision"><geometry><cylinder><radius>0.28</radius><length>0.45</length></cylinder></geometry></collision><visual name="visual"><geometry><cylinder><radius>0.28</radius><length>0.45</length></cylinder></geometry><material><ambient>0.22 0.13 0.08 1</ambient><diffuse>0.36 0.22 0.13 1</diffuse></material></visual></link>
+      <link name="living_plant_top"><pose>-7.2 -5.05 0.78 0 0 0</pose><visual name="visual"><geometry><sphere><radius>0.38</radius></sphere></geometry><material><ambient>0.10 0.32 0.18 1</ambient><diffuse>0.14 0.46 0.25 1</diffuse></material></visual></link>
+      <link name="floor_lamp_pole"><pose>-6.9 -1.0 0.9 0 0 0</pose><collision name="collision"><geometry><cylinder><radius>0.04</radius><length>1.6</length></cylinder></geometry></collision><visual name="visual"><geometry><cylinder><radius>0.04</radius><length>1.6</length></cylinder></geometry><material><ambient>0.45 0.40 0.32 1</ambient><diffuse>0.65 0.58 0.45 1</diffuse></material></visual></link>
+      <link name="floor_lamp_shade"><pose>-6.9 -1.0 1.75 0 0 0</pose><visual name="visual"><geometry><cylinder><radius>0.25</radius><length>0.35</length></cylinder></geometry><material><ambient>0.92 0.82 0.56 1</ambient><diffuse>1.0 0.90 0.62 1</diffuse></material></visual></link>
+    </model>
+  </world>
+</sdf>

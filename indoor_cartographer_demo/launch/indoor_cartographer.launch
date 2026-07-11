@@ -1,0 +1,148 @@
+<launch>
+  <arg name="gui" default="true" />
+  <arg name="rviz" default="true" />
+  <arg name="autonomous" default="true" />
+  <arg name="active_slam" default="$(arg autonomous)" />
+  <arg name="explore" default="false" />
+  <arg name="navigation" default="false" />
+  <arg name="scene" default="detailed" />
+  <arg name="world" default="$(eval find('indoor_cartographer_demo') + ('/worlds/quick_validation_home.world' if arg('scene') == 'quick' else '/worlds/two_bedroom_apartment.world'))" />
+  <arg name="x" default="$(eval '-4.4' if arg('scene') == 'quick' else '-3.0')" />
+  <arg name="y" default="$(eval '-3.4' if arg('scene') == 'quick' else '-4.7')" />
+  <arg name="z" default="0.12" />
+  <arg name="yaw" default="0.0" />
+
+  <param name="/use_sim_time" value="true" />
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(arg world)" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="paused" value="false" />
+    <arg name="use_sim_time" value="true" />
+  </include>
+
+  <param name="robot_description"
+      command="$(find xacro)/xacro $(dirname)/../urdf/indoor_mapper_bot.urdf.xacro" />
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher"
+      type="robot_state_publisher" output="screen" />
+
+  <node name="spawn_indoor_mapper_bot" pkg="indoor_cartographer_demo"
+      type="indoor_spawn_or_replace_model.py" output="screen">
+    <param name="model_name" value="indoor_mapper_bot" />
+    <param name="x" value="$(arg x)" />
+    <param name="y" value="$(arg y)" />
+    <param name="z" value="$(arg z)" />
+    <param name="yaw" value="$(arg yaw)" />
+  </node>
+
+  <node name="cartographer_node" pkg="cartographer_ros"
+      type="cartographer_node" args="
+          -configuration_directory $(dirname)/../config
+          -configuration_basename cartographer_indoor_2d.lua"
+      output="screen">
+    <remap from="scan" to="/scan" />
+    <remap from="odom" to="/odom" />
+  </node>
+
+  <node name="cartographer_occupancy_grid_node" pkg="cartographer_ros"
+      type="cartographer_occupancy_grid_node"
+      args="-resolution 0.05 -publish_period_sec 0.6"
+      output="screen" />
+
+  <node if="$(arg navigation)" name="move_base" pkg="move_base" type="move_base" output="screen">
+    <remap from="cmd_vel" to="/move_base/cmd_vel_raw" />
+    <rosparam file="$(dirname)/../config/costmap_common.yaml" command="load" ns="global_costmap" />
+    <rosparam file="$(dirname)/../config/costmap_common.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(dirname)/../config/global_costmap_exploration.yaml" command="load" />
+    <rosparam file="$(dirname)/../config/local_costmap.yaml" command="load" />
+    <rosparam file="$(dirname)/../config/move_base_exploration.yaml" command="load" />
+    <rosparam file="$(dirname)/../config/dwa_exploration.yaml" command="load" />
+  </node>
+
+  <node if="$(arg navigation)" name="indoor_cmd_vel_safety"
+      pkg="indoor_cartographer_demo" type="indoor_cmd_vel_safety.py" output="screen">
+    <param name="max_forward_speed" value="1.15" />
+    <param name="max_reverse_speed" value="0.28" />
+    <param name="max_angular_speed" value="1.95" />
+    <param name="slow_distance" value="0.64" />
+    <param name="stop_distance" value="0.38" />
+    <param name="emergency_distance" value="0.27" />
+    <param name="side_stop_distance" value="0.24" />
+    <param name="clear_speed_distance" value="99.0" />
+    <param name="speed_boost" value="1.0" />
+    <param name="min_clear_speed" value="0.0" />
+    <param name="boost_angular_limit" value="0.45" />
+    <param name="backup_seconds" value="0.85" />
+    <param name="turn_seconds" value="0.75" />
+    <param name="stuck_seconds" value="3.0" />
+    <param name="stuck_distance" value="0.045" />
+  </node>
+
+  <node if="$(arg active_slam)" name="active_slam_explorer"
+      pkg="indoor_cartographer_demo" type="active_slam_explorer.py" output="screen">
+    <param name="control_rate" value="24.0" />
+    <param name="replan_interval" value="2.4" />
+    <param name="goal_timeout" value="15.0" />
+    <param name="lookahead_distance" value="1.65" />
+    <param name="min_local_target_distance" value="0.42" />
+    <param name="goal_reached_distance" value="0.52" />
+    <param name="inflate_radius" value="0.31" />
+    <param name="min_frontier_cells" value="8" />
+    <param name="min_frontier_path_distance" value="1.1" />
+    <param name="frontier_gain_weight" value="2.8" />
+    <param name="frontier_distance_weight" value="0.36" />
+    <param name="frontier_far_bonus" value="0.28" />
+    <param name="frontier_goal_hysteresis" value="3.2" />
+    <param name="patrol_min_distance" value="1.6" />
+    <param name="patrol_max_distance" value="4.8" />
+    <param name="patrol_unknown_radius" value="5" />
+    <param name="patrol_cell_stride" value="4" />
+    <param name="cruise_speed" value="0.82" />
+    <param name="min_drive_speed" value="0.30" />
+    <param name="max_angular_speed" value="2.05" />
+    <param name="turn_gain" value="2.05" />
+    <param name="local_heading_samples" value="21" />
+    <param name="local_heading_limit" value="1.45" />
+    <param name="local_clear_distance" value="1.45" />
+    <param name="local_stop_margin" value="0.14" />
+    <param name="obstacle_clearance_weight" value="1.45" />
+    <param name="heading_tracking_weight" value="2.15" />
+    <param name="front_slow_distance" value="1.00" />
+    <param name="front_stop_distance" value="0.48" />
+    <param name="emergency_distance" value="0.32" />
+    <param name="side_stop_distance" value="0.34" />
+    <param name="rear_stop_distance" value="0.32" />
+    <param name="scan_self_filter_radius" value="0.20" />
+    <param name="blocked_timeout" value="1.8" />
+    <param name="stuck_timeout" value="2.8" />
+    <param name="backup_seconds" value="1.05" />
+    <param name="turn_seconds" value="1.15" />
+    <param name="probe_seconds" value="0.90" />
+    <param name="spin_timeout" value="5.0" />
+    <param name="spin_min_angle" value="3.6" />
+    <param name="spin_max_translation" value="0.35" />
+  </node>
+
+  <node if="$(arg explore)" name="explore"
+      pkg="explore_lite" type="explore" respawn="false" output="screen">
+    <param name="robot_base_frame" value="base_link" />
+    <param name="costmap_topic" value="/move_base/global_costmap/costmap" />
+    <param name="costmap_updates_topic" value="/move_base/global_costmap/costmap_updates" />
+    <param name="visualize" value="true" />
+    <param name="planner_frequency" value="0.35" />
+    <param name="progress_timeout" value="22.0" />
+    <param name="potential_scale" value="0.45" />
+    <param name="orientation_scale" value="0.0" />
+    <param name="gain_scale" value="2.4" />
+    <param name="transform_tolerance" value="0.5" />
+    <param name="min_frontier_size" value="0.28" />
+    <param name="minimum_goal_distance" value="1.0" />
+    <param name="subgoal_distance" value="4.0" />
+    <param name="plan_tolerance" value="0.85" />
+    <param name="check_path_before_goal" value="true" />
+  </node>
+
+  <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz"
+      args="-d $(dirname)/../rviz/indoor_mapping.rviz" />
+</launch>

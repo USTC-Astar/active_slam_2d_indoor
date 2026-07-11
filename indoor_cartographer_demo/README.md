@@ -1,0 +1,78 @@
+# Indoor Cartographer Mapping Demo
+
+This demo adds a high-detail Gazebo apartment scene for Cartographer 2D SLAM.
+The layout contains two bedrooms, one kitchen, one living room, and one
+bathroom. The robot has a 2D lidar, wheel odometry, and an RGB camera published
+as `/robot_view/image_raw`.
+
+Run it from `~/cartographer`:
+
+```bash
+./run_indoor_mapping_demo.sh
+```
+
+The detailed apartment remains the default. Use the smaller, wider quick home
+when iterating on exploration and recovery behavior:
+
+```bash
+./run_indoor_mapping_demo.sh scene:=quick
+./run_indoor_mapping_demo.sh scene:=detailed
+```
+
+Useful launch arguments:
+
+```bash
+./run_indoor_mapping_demo.sh autonomous:=false
+./run_indoor_mapping_demo.sh gui:=false
+./run_indoor_mapping_demo.sh rviz:=false
+```
+
+RViz opens with a narrow left display panel, the `Robot View` camera panel
+docked at the lower left, and a larger map view. The display stack includes the
+Cartographer map/submaps, scan, robot model, Active SLAM frontiers, the active
+path, the current target, and the lower-left camera view.
+
+Autonomous exploration now defaults to a lightweight Active SLAM node instead
+of `move_base + explore_lite`. `active_slam_explorer.py` reads `/map`, `/scan`,
+and TF, runs a reachable-frontier BFS in known free space, follows a lookahead
+point on that path, and falls back to fast open-space probing when the initial
+frontiers are too close. This keeps the loop small and responsive for short
+Cartographer mapping checks.
+
+The default profile is tuned for fast coverage: control commands are published
+at `24 Hz`, the cruise speed is `0.82 m/s`, and frontier scoring favors larger
+unknown regions over tiny nearby frontiers. Local obstacle handling uses a
+VFH-style laser heading selector, so each control step chooses a safe gap that
+still points toward the active frontier whenever possible.
+
+The local controller evaluates a footprint-width laser corridor rather than a
+single center ray. A Gazebo contact sensor provides a final collision signal.
+When motion is blocked, recovery brakes, checks rear clearance, backs away,
+turns toward the more open side, probes forward, blacklists the failed frontier,
+and forces a fresh global frontier plan.
+
+If normal frontier clusters temporarily disappear, the explorer now selects a
+reachable patrol waypoint near unknown space and follows a BFS path instead of
+rotating indefinitely. Target hysteresis prevents rapid left/right goal changes.
+The controller also detects high accumulated rotation with little translation
+and forces recovery. Map access is synchronized so occupancy-grid expansion
+cannot terminate the control timer and leave Gazebo executing a stale command.
+
+Main Active SLAM topics:
+
+```bash
+/active_slam/status
+/active_slam/frontiers
+/active_slam/path
+/active_slam/target
+```
+
+The old navigation stack is still available for comparison:
+
+```bash
+./run_indoor_mapping_demo.sh active_slam:=false navigation:=true explore:=true
+```
+
+The RViz costmap layers are available but disabled by default to keep the map
+view clean. Enable `Global Costmap` or `Local Costmap` in Displays when tuning
+navigation clearance.

@@ -1,0 +1,12 @@
+# This repository tracks the indoor mapping demo, not the retained upstream
+# Cartographer checkout or optional third-party planners beside it.
+/*
+!/.gitignore
+!/indoor_cartographer_demo/
+!/indoor_cartographer_demo/**
+!/run_indoor_mapping_demo.sh
+
+**/__pycache__/
+*.pyc
+*.pyo
+*.log

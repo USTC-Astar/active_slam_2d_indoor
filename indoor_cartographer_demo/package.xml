@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>indoor_cartographer_demo</name>
+  <version>0.1.0</version>
+  <description>High-detail indoor Gazebo scene for Cartographer 2D SLAM validation.</description>
+  <maintainer email="zzs@example.com">zzs</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>cartographer_ros</exec_depend>
+  <exec_depend>costmap_2d</exec_depend>
+  <exec_depend>dwa_local_planner</exec_depend>
+  <exec_depend>explore_lite</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+  <exec_depend>gazebo_msgs</exec_depend>
+  <exec_depend>global_planner</exec_depend>
+  <exec_depend>move_base</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>rviz</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>xacro</exec_depend>
+</package>
