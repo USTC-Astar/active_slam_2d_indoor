@@ -41,6 +41,7 @@ class ActiveSlamExplorer:
 
         self.map_lock = threading.RLock()
         self.last_known_cell_count = 0
+        self.current_known_cell_count = 0
         self.last_map_growth_time = rospy.Time.now()
         self.map_sub = rospy.Subscriber("/map", OccupancyGrid, self.map_callback, queue_size=1)
         self.scan_sub = rospy.Subscriber("/scan", LaserScan, self.scan_callback, queue_size=1)
@@ -60,6 +61,7 @@ class ActiveSlamExplorer:
         self.local_target = None
         self.blacklist = {}
         self.recent_patrol_goals = collections.deque(maxlen=10)
+        self.recent_closure_goals = collections.deque(maxlen=16)
         self.visited_positions = collections.deque(maxlen=120)
 
         self.free_threshold = int(rospy.get_param("~free_threshold", 35))
@@ -79,11 +81,28 @@ class ActiveSlamExplorer:
         self.patrol_unknown_radius = int(rospy.get_param("~patrol_unknown_radius", 5))
         self.patrol_min_visible_unknown = int(rospy.get_param("~patrol_min_visible_unknown", 6))
         self.patrol_cell_stride = int(rospy.get_param("~patrol_cell_stride", 4))
+        self.closure_start_ratio = rospy.get_param("~closure_start_ratio", 0.72)
+        self.closure_min_runtime = rospy.Duration(rospy.get_param("~closure_min_runtime", 90.0))
+        self.closure_unknown_radius = int(rospy.get_param("~closure_unknown_radius", 24))
+        self.closure_cell_stride = int(rospy.get_param("~closure_cell_stride", 4))
+        self.closure_min_visible_unknown = int(rospy.get_param("~closure_min_visible_unknown", 10))
+        self.closure_min_distance = rospy.get_param("~closure_min_distance", 0.35)
+        self.closure_max_distance = rospy.get_param("~closure_max_distance", 8.0)
+        self.closure_bbox_margin = int(rospy.get_param("~closure_bbox_margin", 4))
+        self.closure_bounds = (
+            rospy.get_param("~closure_bounds_min_x", float("nan")),
+            rospy.get_param("~closure_bounds_min_y", float("nan")),
+            rospy.get_param("~closure_bounds_max_x", float("nan")),
+            rospy.get_param("~closure_bounds_max_y", float("nan")),
+        )
         self.completion_no_frontier_cycles = int(rospy.get_param("~completion_no_frontier_cycles", 6))
         self.completion_stable_seconds = rospy.Duration(rospy.get_param("~completion_stable_seconds", 12.0))
         self.completion_min_runtime = rospy.Duration(rospy.get_param("~completion_min_runtime", 45.0))
         self.completion_min_travel_distance = rospy.get_param("~completion_min_travel_distance", 24.0)
         self.completion_min_known_cells = int(rospy.get_param("~completion_min_known_cells", 0))
+        self.completion_max_interior_unknown = int(
+            rospy.get_param("~completion_max_interior_unknown", 10 ** 9)
+        )
         self.completion_known_growth_cells = int(rospy.get_param("~completion_known_growth_cells", 20))
         self.visit_record_distance = rospy.get_param("~visit_record_distance", 0.75)
         self.home_reached_distance = rospy.get_param("~home_reached_distance", 0.48)
@@ -177,6 +196,7 @@ class ActiveSlamExplorer:
         self.frontier_probe_heading = 0.0
         self.frontier_probe_until = rospy.Time(0)
         self.finish_trajectory_started = False
+        self.last_interior_unknown_count = 10 ** 9
         self.completed_pub.publish(False)
 
         self.timer = rospy.Timer(rospy.Duration(1.0 / max(1.0, self.control_rate)), self.update)
@@ -185,6 +205,7 @@ class ActiveSlamExplorer:
         with self.map_lock:
             self.map_msg = msg
             known_cells = sum(1 for value in msg.data if value >= 0)
+            self.current_known_cell_count = known_cells
             growth_threshold = getattr(self, "completion_known_growth_cells", 20)
             if known_cells > self.last_known_cell_count + growth_threshold:
                 self.last_map_growth_time = rospy.Time.now()
@@ -677,10 +698,13 @@ class ActiveSlamExplorer:
 
     def visible_unknown_gain(self, cell, radius):
         """Count unknown cells visible from a patrol cell without looking through walls."""
+        return self.visible_unknown_cells(cell, radius, None)
+
+    def visible_unknown_cells(self, cell, radius, bounds):
         data = self.map_msg.data
         width = self.map_msg.info.width
         visible = set()
-        ray_count = max(24, radius * 3)
+        ray_count = max(24, radius * 2)
         for ray in range(ray_count):
             angle = 2.0 * math.pi * ray / ray_count
             last = None
@@ -697,9 +721,111 @@ class ActiveSlamExplorer:
                 value = data[sample[1] * width + sample[0]]
                 if value >= self.occupied_threshold:
                     break
-                if value < 0:
+                inside_bounds = (
+                    bounds is None or
+                    (bounds[0] <= sample[0] <= bounds[2] and
+                     bounds[1] <= sample[1] <= bounds[3])
+                )
+                if value < 0 and inside_bounds:
                     visible.add(sample)
         return len(visible)
+
+    def interior_unknown_region(self):
+        data = self.map_msg.data
+        width = self.map_msg.info.width
+        if self.home_position is not None and all(math.isfinite(value) for value in self.closure_bounds):
+            min_cell = self.world_to_cell(
+                self.home_position[0] + self.closure_bounds[0],
+                self.home_position[1] + self.closure_bounds[1],
+            )
+            max_cell = self.world_to_cell(
+                self.home_position[0] + self.closure_bounds[2],
+                self.home_position[1] + self.closure_bounds[3],
+            )
+            min_x = max(0, min(min_cell[0], max_cell[0]))
+            max_x = min(width - 1, max(min_cell[0], max_cell[0]))
+            min_y = max(0, min(min_cell[1], max_cell[1]))
+            max_y = min(self.map_msg.info.height - 1, max(min_cell[1], max_cell[1]))
+            if min_x < max_x and min_y < max_y:
+                bounds = (min_x, min_y, max_x, max_y)
+                self.last_interior_unknown_count = sum(
+                    1
+                    for y in range(min_y, max_y + 1)
+                    for x in range(min_x, max_x + 1)
+                    if data[y * width + x] < 0
+                )
+                return bounds
+
+        occupied = [index for index, value in enumerate(data) if value >= self.occupied_threshold]
+        if len(occupied) < 40:
+            self.last_interior_unknown_count = 10 ** 9
+            return None
+        margin = max(1, self.closure_bbox_margin)
+        min_x = min(index % width for index in occupied) + margin
+        max_x = max(index % width for index in occupied) - margin
+        min_y = min(index // width for index in occupied) + margin
+        max_y = max(index // width for index in occupied) - margin
+        if min_x >= max_x or min_y >= max_y:
+            self.last_interior_unknown_count = 10 ** 9
+            return None
+        bounds = (min_x, min_y, max_x, max_y)
+        self.last_interior_unknown_count = sum(
+            1
+            for y in range(min_y, max_y + 1)
+            for x in range(min_x, max_x + 1)
+            if data[y * width + x] < 0
+        )
+        return bounds
+
+    def choose_closure_goal(self, pose, distance, travel_distance):
+        """Choose a new free-space viewpoint for interior lidar shadow gaps."""
+        if self.completion_min_known_cells <= 0:
+            return None
+        if (self.mapping_start_time is None or
+                rospy.Time.now() - self.mapping_start_time < self.closure_min_runtime):
+            return None
+        if self.current_known_cell_count < self.completion_min_known_cells * self.closure_start_ratio:
+            return None
+        bounds = self.interior_unknown_region()
+        if bounds is None or self.last_interior_unknown_count <= self.completion_max_interior_unknown:
+            return None
+
+        rx, ry, yaw = pose
+        radius = max(4, self.closure_unknown_radius)
+        stride = max(2, self.closure_cell_stride)
+        best = None
+        best_score = -float("inf")
+        for cell in distance:
+            if cell[0] % stride or cell[1] % stride:
+                continue
+            path_cost = travel_distance[cell] * self.map_msg.info.resolution / 10.0
+            if path_cost < self.closure_min_distance or path_cost > self.closure_max_distance:
+                continue
+            visible_unknown = self.visible_unknown_cells(cell, radius, bounds)
+            if visible_unknown < self.closure_min_visible_unknown:
+                continue
+            wx, wy = self.cell_to_world(cell)
+            key = (round(wx, 1), round(wy, 1))
+            if key in self.blacklist:
+                continue
+            repeat_penalty = 0.0
+            for old_x, old_y in self.recent_closure_goals:
+                repeat_penalty = max(
+                    repeat_penalty,
+                    clamp(1.2 - math.hypot(wx - old_x, wy - old_y), 0.0, 1.2),
+                )
+            heading = math.atan2(wy - ry, wx - rx)
+            alignment = math.cos(angle_diff(heading, yaw))
+            score = (
+                1.05 * math.sqrt(visible_unknown) +
+                0.16 * min(path_cost, 6.0) +
+                0.22 * alignment -
+                3.4 * repeat_penalty
+            )
+            if score > best_score:
+                best_score = score
+                best = cell
+        return best
 
     def choose_home_goal(self, parent, distance, traversable):
         if self.home_position is None:
@@ -793,12 +919,16 @@ class ActiveSlamExplorer:
     def completion_ready(self, now):
         if self.mapping_start_time is None:
             return False
+        coverage_closed = (
+            self.current_known_cell_count >= self.completion_min_known_cells and
+            self.last_interior_unknown_count <= self.completion_max_interior_unknown
+        )
         return (
-            self.no_frontier_cycles >= self.completion_no_frontier_cycles and
+            (self.no_frontier_cycles >= self.completion_no_frontier_cycles or coverage_closed) and
             now - self.mapping_start_time >= self.completion_min_runtime and
             now - self.last_map_growth_time >= self.completion_stable_seconds and
             self.total_travel_distance >= self.completion_min_travel_distance and
-            self.last_known_cell_count >= self.completion_min_known_cells
+            coverage_closed
         )
 
     def update_coverage_progress(self, pose):
@@ -880,20 +1010,47 @@ class ActiveSlamExplorer:
         parent, distance, travel_distance = self.dijkstra(start, traversable, costs)
         now = rospy.Time.now()
         if self.returning_home:
+            self.interior_unknown_region()
+            if (self.current_known_cell_count < self.completion_min_known_cells or
+                    self.last_interior_unknown_count > self.completion_max_interior_unknown):
+                self.returning_home = False
+                self.current_goal_cell = None
+                self.current_goal_world = None
+                self.current_goal_source = None
+                self.status_pub.publish("map gap reopened: resuming closure scan")
+        if self.returning_home:
             goal, plan = self.choose_home_goal(parent, distance, traversable)
             goal_source = "home"
         else:
             goal = None
             plan = []
             goal_source = self.current_goal_source
+            closure_priority = (
+                self.current_known_cell_count >= self.completion_min_known_cells and
+                self.mapping_start_time is not None and
+                now - self.mapping_start_time >= self.closure_min_runtime
+            )
+            if closure_priority:
+                self.interior_unknown_region()
             if (self.current_goal_world is not None and
-                    self.current_goal_source in ("frontier", "patrol") and
+                    self.current_goal_source in ("frontier", "closure", "patrol") and
                     now - self.goal_started < self.goal_commitment):
                 committed = self.world_to_cell(*self.current_goal_world)
                 committed = self.nearest_traversable(committed, traversable, max_radius=5)
                 if committed is not None and committed in distance:
                     goal = committed
                     plan = self.reconstruct_path(goal, parent)
+
+            if (goal is None or len(plan) < 2) and closure_priority:
+                if self.completion_ready(now):
+                    self.returning_home = True
+                    goal, plan = self.choose_home_goal(parent, distance, traversable)
+                    goal_source = "home"
+                    self.status_pub.publish("closure complete: returning home")
+                else:
+                    goal = self.choose_closure_goal(pose, distance, travel_distance)
+                    plan = self.reconstruct_path(goal, parent) if goal is not None else []
+                    goal_source = "closure"
 
             if goal is None or len(plan) < 2:
                 goal, plan = self.choose_frontier(pose, parent, distance, travel_distance, traversable)
@@ -902,6 +1059,11 @@ class ActiveSlamExplorer:
                     self.no_frontier_cycles = 0
                 else:
                     self.no_frontier_cycles += 1
+
+            if (goal is None or len(plan) < 2) and not closure_priority:
+                goal = self.choose_closure_goal(pose, distance, travel_distance)
+                plan = self.reconstruct_path(goal, parent) if goal is not None else []
+                goal_source = "closure"
 
             if goal is None or len(plan) < 2:
                 goal = self.choose_patrol_goal(pose, parent, distance, travel_distance)
@@ -924,6 +1086,7 @@ class ActiveSlamExplorer:
             return False
         same_goal = (
             self.current_goal_world is not None and
+            self.current_goal_source == goal_source and
             math.hypot(
                 self.cell_to_world(goal)[0] - self.current_goal_world[0],
                 self.cell_to_world(goal)[1] - self.current_goal_world[1],
@@ -938,9 +1101,10 @@ class ActiveSlamExplorer:
             self.progress_pose = self.motion_position(pose)
             self.progress_time = rospy.Time.now()
         self.publish_path(plan)
-        self.status_pub.publish(
-            "%s goal, cells=%d" % (goal_source, len(plan))
-        )
+        status = "%s goal, cells=%d" % (goal_source, len(plan))
+        if goal_source == "closure":
+            status += ", interior_unknown=%d" % self.last_interior_unknown_count
+        self.status_pub.publish(status)
         return True
 
     def select_local_target(self, pose):
@@ -985,6 +1149,7 @@ class ActiveSlamExplorer:
         self.last_recovery_time = now
         self.maybe_blacklist_goal()
         self.remember_patrol_goal()
+        self.remember_closure_goal()
         left = self.sector_min(0.35, 1.45)
         right = self.sector_min(-1.45, -0.35)
         self.recovery_turn_sign = 1.0 if left >= right else -1.0
@@ -1079,6 +1244,15 @@ class ActiveSlamExplorer:
                 point[0] - self.recent_patrol_goals[-1][0],
                 point[1] - self.recent_patrol_goals[-1][1]) > 0.3:
             self.recent_patrol_goals.append(point)
+
+    def remember_closure_goal(self):
+        if self.current_goal_cell is None or self.current_goal_source != "closure":
+            return
+        point = self.current_goal_world or self.cell_to_world(self.current_goal_cell)
+        if not self.recent_closure_goals or math.hypot(
+                point[0] - self.recent_closure_goals[-1][0],
+                point[1] - self.recent_closure_goals[-1][1]) > 0.25:
+            self.recent_closure_goals.append(point)
 
     def goal_reached(self, pose):
         if self.current_goal_cell is None:
@@ -1294,6 +1468,7 @@ class ActiveSlamExplorer:
                 self.status_pub.publish("%s reached: starting deep probe" % reached_source)
                 return
             self.remember_patrol_goal()
+            self.remember_closure_goal()
             self.current_plan = []
             self.current_goal_cell = None
             self.current_goal_world = None
@@ -1305,6 +1480,7 @@ class ActiveSlamExplorer:
         if self.current_goal_cell is not None and now - self.goal_started > active_timeout:
             self.maybe_blacklist_goal()
             self.remember_patrol_goal()
+            self.remember_closure_goal()
             self.current_plan = []
             self.current_goal_cell = None
             self.current_goal_world = None

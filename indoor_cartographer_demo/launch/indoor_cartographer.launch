@@ -110,11 +110,24 @@
     <param name="patrol_unknown_radius" value="12" />
     <param name="patrol_min_visible_unknown" value="8" />
     <param name="patrol_cell_stride" value="5" />
+    <param name="closure_start_ratio" value="0.72" />
+    <param name="closure_min_runtime" value="$(eval '90.0' if arg('scene') == 'quick' else '140.0')" />
+    <param name="closure_unknown_radius" value="36" />
+    <param name="closure_cell_stride" value="5" />
+    <param name="closure_min_visible_unknown" value="6" />
+    <param name="closure_min_distance" value="0.35" />
+    <param name="closure_max_distance" value="8.0" />
+    <param name="closure_bbox_margin" value="4" />
+    <param name="closure_bounds_min_x" value="$(eval '-1.45' if arg('scene') == 'quick' else '-4.82')" />
+    <param name="closure_bounds_min_y" value="$(eval '-0.95' if arg('scene') == 'quick' else '-1.12')" />
+    <param name="closure_bounds_max_x" value="$(eval '10.25' if arg('scene') == 'quick' else '10.82')" />
+    <param name="closure_bounds_max_y" value="$(eval '7.75' if arg('scene') == 'quick' else '10.52')" />
     <param name="completion_no_frontier_cycles" value="10" />
     <param name="completion_stable_seconds" value="25.0" />
     <param name="completion_min_runtime" value="$(eval '140.0' if arg('scene') == 'quick' else '210.0')" />
     <param name="completion_min_travel_distance" value="$(eval '45.0' if arg('scene') == 'quick' else '70.0')" />
-    <param name="completion_min_known_cells" value="$(eval '36000' if arg('scene') == 'quick' else '62000')" />
+    <param name="completion_min_known_cells" value="$(eval '35000' if arg('scene') == 'quick' else '60000')" />
+    <param name="completion_max_interior_unknown" value="$(eval '6200' if arg('scene') == 'quick' else '10800')" />
     <param name="completion_known_growth_cells" value="20" />
     <param name="visit_record_distance" value="0.75" />
     <param name="home_reached_distance" value="0.48" />

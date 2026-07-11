@@ -71,6 +71,12 @@ cannot postpone return forever once those coverage gates are satisfied. Patrol
 scoring only counts unknown cells with a
 wall-free line of sight, so unknown space outside closed exterior walls cannot
 cause endless patrol while unfinished corridors and rooms remain eligible.
+After broad coverage, a closure-scan phase measures unknown lidar shadows
+inside each bundled scene's known wall bounds and selects reachable viewpoints
+that can see them directly. Using configured wall bounds prevents a missing
+outer wall from shrinking the measured interior and causing false completion.
+Recently used closure viewpoints are penalized so wall
+corners and furniture occlusions are observed again from a different angle.
 Recorded visit positions prefer areas that have seen less coverage. The robot
 then plans back to its recorded start position. At home it publishes
 `/active_slam/completed=True` and continues publishing a zero `/cmd_vel`.
