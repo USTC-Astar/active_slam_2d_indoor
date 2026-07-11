@@ -87,11 +87,17 @@
     <param name="control_rate" value="24.0" />
     <param name="replan_interval" value="2.4" />
     <param name="goal_timeout" value="20.0" />
+    <param name="goal_commitment" value="8.0" />
     <param name="lookahead_distance" value="1.65" />
-    <param name="min_local_target_distance" value="0.42" />
-    <param name="goal_reached_distance" value="0.52" />
-    <param name="inflate_radius" value="0.23" />
-    <param name="costmap_radius" value="0.52" />
+    <param name="min_local_target_distance" value="0.16" />
+    <param name="goal_reached_distance" value="0.26" />
+    <param name="frontier_probe_distance" value="1.4" />
+    <param name="frontier_probe_seconds" value="5.0" />
+    <param name="frontier_probe_speed" value="0.42" />
+    <param name="frontier_probe_unknown_radius" value="18" />
+    <param name="finish_cartographer_on_complete" value="true" />
+    <param name="inflate_radius" value="0.20" />
+    <param name="costmap_radius" value="0.46" />
     <param name="costmap_weight" value="0.10" />
     <param name="min_frontier_cells" value="4" />
     <param name="min_frontier_path_distance" value="0.55" />
@@ -102,11 +108,13 @@
     <param name="patrol_min_distance" value="1.2" />
     <param name="patrol_max_distance" value="6.5" />
     <param name="patrol_unknown_radius" value="12" />
+    <param name="patrol_min_visible_unknown" value="8" />
     <param name="patrol_cell_stride" value="5" />
     <param name="completion_no_frontier_cycles" value="10" />
-    <param name="completion_stable_seconds" value="18.0" />
-    <param name="completion_min_runtime" value="$(eval '70.0' if arg('scene') == 'quick' else '110.0')" />
-    <param name="completion_min_travel_distance" value="$(eval '28.0' if arg('scene') == 'quick' else '42.0')" />
+    <param name="completion_stable_seconds" value="25.0" />
+    <param name="completion_min_runtime" value="$(eval '140.0' if arg('scene') == 'quick' else '210.0')" />
+    <param name="completion_min_travel_distance" value="$(eval '45.0' if arg('scene') == 'quick' else '70.0')" />
+    <param name="completion_min_known_cells" value="$(eval '36000' if arg('scene') == 'quick' else '62000')" />
     <param name="completion_known_growth_cells" value="20" />
     <param name="visit_record_distance" value="0.75" />
     <param name="home_reached_distance" value="0.48" />
@@ -122,22 +130,22 @@
     <param name="obstacle_clearance_weight" value="1.45" />
     <param name="heading_tracking_weight" value="2.15" />
     <param name="front_slow_distance" value="1.00" />
-    <param name="front_stop_distance" value="0.40" />
-    <param name="emergency_distance" value="0.27" />
-    <param name="side_stop_distance" value="0.27" />
-    <param name="rear_stop_distance" value="0.27" />
-    <param name="robot_half_width" value="0.18" />
-    <param name="robot_front_radius" value="0.19" />
-    <param name="laser_offset_x" value="0.08" />
-    <param name="corridor_margin" value="0.045" />
-    <param name="scan_self_filter_radius" value="0.15" />
+    <param name="front_stop_distance" value="0.36" />
+    <param name="emergency_distance" value="0.24" />
+    <param name="side_stop_distance" value="0.23" />
+    <param name="rear_stop_distance" value="0.24" />
+    <param name="robot_half_width" value="0.15" />
+    <param name="robot_front_radius" value="0.16" />
+    <param name="laser_offset_x" value="0.065" />
+    <param name="corridor_margin" value="0.04" />
+    <param name="scan_self_filter_radius" value="0.13" />
     <param name="blocked_timeout" value="1.8" />
     <param name="stuck_timeout" value="2.8" />
     <param name="backup_seconds" value="1.05" />
     <param name="turn_seconds" value="1.15" />
     <param name="probe_seconds" value="0.90" />
-    <param name="dead_end_front_distance" value="0.58" />
-    <param name="dead_end_side_distance" value="0.52" />
+    <param name="dead_end_front_distance" value="0.52" />
+    <param name="dead_end_side_distance" value="0.45" />
     <param name="dead_end_backup_extra" value="0.55" />
     <param name="spin_timeout" value="5.0" />
     <param name="spin_min_angle" value="3.6" />

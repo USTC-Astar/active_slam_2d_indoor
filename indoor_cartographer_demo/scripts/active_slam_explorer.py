@@ -6,6 +6,7 @@ import threading
 
 import rospy
 import tf2_ros
+from cartographer_ros_msgs.srv import FinishTrajectory
 from gazebo_msgs.msg import ContactsState
 from geometry_msgs.msg import Point, PoseStamped, Twist
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
@@ -54,6 +55,7 @@ class ActiveSlamExplorer:
         self.last_contact_time = rospy.Time(0)
         self.current_plan = []
         self.current_goal_cell = None
+        self.current_goal_world = None
         self.current_goal_source = None
         self.local_target = None
         self.blacklist = {}
@@ -75,11 +77,13 @@ class ActiveSlamExplorer:
         self.patrol_min_distance = rospy.get_param("~patrol_min_distance", 1.5)
         self.patrol_max_distance = rospy.get_param("~patrol_max_distance", 5.0)
         self.patrol_unknown_radius = int(rospy.get_param("~patrol_unknown_radius", 5))
+        self.patrol_min_visible_unknown = int(rospy.get_param("~patrol_min_visible_unknown", 6))
         self.patrol_cell_stride = int(rospy.get_param("~patrol_cell_stride", 4))
         self.completion_no_frontier_cycles = int(rospy.get_param("~completion_no_frontier_cycles", 6))
         self.completion_stable_seconds = rospy.Duration(rospy.get_param("~completion_stable_seconds", 12.0))
         self.completion_min_runtime = rospy.Duration(rospy.get_param("~completion_min_runtime", 45.0))
         self.completion_min_travel_distance = rospy.get_param("~completion_min_travel_distance", 24.0)
+        self.completion_min_known_cells = int(rospy.get_param("~completion_min_known_cells", 0))
         self.completion_known_growth_cells = int(rospy.get_param("~completion_known_growth_cells", 20))
         self.visit_record_distance = rospy.get_param("~visit_record_distance", 0.75)
         self.home_reached_distance = rospy.get_param("~home_reached_distance", 0.48)
@@ -87,10 +91,16 @@ class ActiveSlamExplorer:
         self.max_bfs_cells = int(rospy.get_param("~max_bfs_cells", 90000))
         self.replan_interval = rospy.Duration(rospy.get_param("~replan_interval", 2.8))
         self.goal_timeout = rospy.Duration(rospy.get_param("~goal_timeout", 16.0))
+        self.goal_commitment = rospy.Duration(rospy.get_param("~goal_commitment", 8.0))
         self.blacklist_seconds = rospy.Duration(rospy.get_param("~blacklist_seconds", 18.0))
         self.lookahead_distance = rospy.get_param("~lookahead_distance", 1.35)
-        self.min_local_target_distance = rospy.get_param("~min_local_target_distance", 0.38)
-        self.goal_reached_distance = rospy.get_param("~goal_reached_distance", 0.48)
+        self.min_local_target_distance = rospy.get_param("~min_local_target_distance", 0.16)
+        self.goal_reached_distance = rospy.get_param("~goal_reached_distance", 0.26)
+        self.frontier_probe_distance = rospy.get_param("~frontier_probe_distance", 1.4)
+        self.frontier_probe_seconds = rospy.Duration(rospy.get_param("~frontier_probe_seconds", 5.0))
+        self.frontier_probe_speed = rospy.get_param("~frontier_probe_speed", 0.42)
+        self.frontier_probe_unknown_radius = int(rospy.get_param("~frontier_probe_unknown_radius", 18))
+        self.finish_cartographer_on_complete = rospy.get_param("~finish_cartographer_on_complete", True)
 
         self.cruise_speed = rospy.get_param("~cruise_speed", 0.62)
         self.min_drive_speed = rospy.get_param("~min_drive_speed", 0.24)
@@ -108,11 +118,11 @@ class ActiveSlamExplorer:
         self.emergency_distance = rospy.get_param("~emergency_distance", 0.25)
         self.side_stop_distance = rospy.get_param("~side_stop_distance", 0.25)
         self.rear_stop_distance = rospy.get_param("~rear_stop_distance", 0.31)
-        self.robot_half_width = rospy.get_param("~robot_half_width", 0.235)
-        self.robot_front_radius = rospy.get_param("~robot_front_radius", 0.25)
-        self.laser_offset_x = rospy.get_param("~laser_offset_x", 0.11)
-        self.scan_self_filter_radius = rospy.get_param("~scan_self_filter_radius", 0.20)
-        self.corridor_margin = rospy.get_param("~corridor_margin", 0.055)
+        self.robot_half_width = rospy.get_param("~robot_half_width", 0.15)
+        self.robot_front_radius = rospy.get_param("~robot_front_radius", 0.16)
+        self.laser_offset_x = rospy.get_param("~laser_offset_x", 0.065)
+        self.scan_self_filter_radius = rospy.get_param("~scan_self_filter_radius", 0.13)
+        self.corridor_margin = rospy.get_param("~corridor_margin", 0.04)
         self.max_linear_deceleration = rospy.get_param("~max_linear_deceleration", 1.45)
         self.stuck_timeout = rospy.Duration(rospy.get_param("~stuck_timeout", 4.0))
         self.stuck_distance = rospy.get_param("~stuck_distance", 0.06)
@@ -162,6 +172,11 @@ class ActiveSlamExplorer:
         self.total_travel_distance = 0.0
         self.travel_reference = None
         self.last_visit_position = None
+        self.frontier_probe_active = False
+        self.frontier_probe_start = None
+        self.frontier_probe_heading = 0.0
+        self.frontier_probe_until = rospy.Time(0)
+        self.finish_trajectory_started = False
         self.completed_pub.publish(False)
 
         self.timer = rospy.Timer(rospy.Duration(1.0 / max(1.0, self.control_rate)), self.update)
@@ -619,6 +634,12 @@ class ActiveSlamExplorer:
                 unknown_integral[(y1 + 1) * integral_width + x0] +
                 unknown_integral[y0 * integral_width + x0]
             )
+            if unknown_gain < self.patrol_min_visible_unknown:
+                continue
+
+            visible_unknown = self.visible_unknown_gain(cell, radius)
+            if visible_unknown < self.patrol_min_visible_unknown:
+                continue
 
             wx, wy = self.cell_to_world(cell)
             key = (round(wx, 1), round(wy, 1))
@@ -636,7 +657,7 @@ class ActiveSlamExplorer:
             for old_x, old_y in self.visited_positions:
                 nearest_visit = min(nearest_visit, math.hypot(wx - old_x, wy - old_y))
             score = (
-                0.55 * math.sqrt(unknown_gain) +
+                0.72 * math.sqrt(visible_unknown) +
                 0.38 * min(path_cost, 5.5) +
                 0.40 * alignment -
                 2.8 * repeat_penalty +
@@ -654,6 +675,32 @@ class ActiveSlamExplorer:
                 best = cell
         return best
 
+    def visible_unknown_gain(self, cell, radius):
+        """Count unknown cells visible from a patrol cell without looking through walls."""
+        data = self.map_msg.data
+        width = self.map_msg.info.width
+        visible = set()
+        ray_count = max(24, radius * 3)
+        for ray in range(ray_count):
+            angle = 2.0 * math.pi * ray / ray_count
+            last = None
+            for step in range(1, radius + 1):
+                sample = (
+                    cell[0] + int(round(math.cos(angle) * step)),
+                    cell[1] + int(round(math.sin(angle) * step)),
+                )
+                if sample == last:
+                    continue
+                last = sample
+                if not self.inside(*sample):
+                    break
+                value = data[sample[1] * width + sample[0]]
+                if value >= self.occupied_threshold:
+                    break
+                if value < 0:
+                    visible.add(sample)
+        return len(visible)
+
     def choose_home_goal(self, parent, distance, traversable):
         if self.home_position is None:
             return None, []
@@ -663,6 +710,86 @@ class ActiveSlamExplorer:
             return None, []
         return home, self.reconstruct_path(home, parent)
 
+    def frontier_unknown_heading(self, cell, fallback_yaw):
+        radius = max(2, self.frontier_probe_unknown_radius)
+        vector_x = 0.0
+        vector_y = 0.0
+        width = self.map_msg.info.width
+        data = self.map_msg.data
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                if dx == 0 and dy == 0:
+                    continue
+                nx, ny = cell[0] + dx, cell[1] + dy
+                if not self.inside(nx, ny) or data[ny * width + nx] >= 0:
+                    continue
+                weight = 1.0 / max(1.0, math.hypot(dx, dy))
+                vector_x += dx * weight
+                vector_y += dy * weight
+        if math.hypot(vector_x, vector_y) < 0.5:
+            return fallback_yaw
+        return math.atan2(vector_y, vector_x)
+
+    def unknown_cells_near(self, cell, radius=None):
+        radius = radius or self.frontier_probe_unknown_radius
+        count = 0
+        width = self.map_msg.info.width
+        for dy in range(-radius, radius + 1):
+            for dx in range(-radius, radius + 1):
+                nx, ny = cell[0] + dx, cell[1] + dy
+                if self.inside(nx, ny) and self.map_msg.data[ny * width + nx] < 0:
+                    count += 1
+        return count
+
+    def start_frontier_probe(self, pose, goal_cell):
+        self.frontier_probe_active = True
+        self.frontier_probe_start = self.motion_position(pose)
+        self.frontier_probe_heading = self.frontier_unknown_heading(goal_cell, pose[2])
+        self.frontier_probe_until = rospy.Time.now() + self.frontier_probe_seconds
+        self.current_plan = []
+        self.current_goal_cell = None
+        self.current_goal_world = None
+        self.current_goal_source = None
+        self.last_plan_time = rospy.Time.now()
+        self.reset_spin_monitor()
+
+    def frontier_probe_command(self, pose):
+        if not self.frontier_probe_active:
+            return None
+        now = rospy.Time.now()
+        current = self.motion_position(pose)
+        moved = math.hypot(
+            current[0] - self.frontier_probe_start[0],
+            current[1] - self.frontier_probe_start[1],
+        )
+        desired_heading = angle_diff(self.frontier_probe_heading, pose[2])
+        front = self.heading_clearance(0.0)
+        if (moved >= self.frontier_probe_distance or now >= self.frontier_probe_until or
+                (abs(desired_heading) < 0.45 and
+                 front <= self.front_stop_distance + self.local_stop_margin + 0.04)):
+            self.frontier_probe_active = False
+            self.last_plan_time = rospy.Time(0)
+            self.status_pub.publish("frontier deep probe complete: replanning")
+            return None
+        return self.local_avoidance_command(desired_heading, self.frontier_probe_speed)
+
+    def finish_cartographer_trajectory(self):
+        if not self.finish_cartographer_on_complete or self.finish_trajectory_started:
+            return
+        self.finish_trajectory_started = True
+
+        def call_service():
+            try:
+                rospy.wait_for_service("/finish_trajectory", timeout=2.0)
+                response = rospy.ServiceProxy("/finish_trajectory", FinishTrajectory)(0)
+                rospy.loginfo("Cartographer final optimization: %s", response.status.message)
+            except Exception as exc:
+                rospy.logwarn("Could not finish Cartographer trajectory: %s", exc)
+
+        thread = threading.Thread(target=call_service)
+        thread.daemon = True
+        thread.start()
+
     def completion_ready(self, now):
         if self.mapping_start_time is None:
             return False
@@ -670,7 +797,8 @@ class ActiveSlamExplorer:
             self.no_frontier_cycles >= self.completion_no_frontier_cycles and
             now - self.mapping_start_time >= self.completion_min_runtime and
             now - self.last_map_growth_time >= self.completion_stable_seconds and
-            self.total_travel_distance >= self.completion_min_travel_distance
+            self.total_travel_distance >= self.completion_min_travel_distance and
+            self.last_known_cell_count >= self.completion_min_known_cells
         )
 
     def update_coverage_progress(self, pose):
@@ -755,22 +883,36 @@ class ActiveSlamExplorer:
             goal, plan = self.choose_home_goal(parent, distance, traversable)
             goal_source = "home"
         else:
-            goal, plan = self.choose_frontier(pose, parent, distance, travel_distance, traversable)
-            goal_source = "frontier"
-            if goal is None or len(plan) < 2:
-                self.no_frontier_cycles += 1
-            else:
-                self.no_frontier_cycles = 0
+            goal = None
+            plan = []
+            goal_source = self.current_goal_source
+            if (self.current_goal_world is not None and
+                    self.current_goal_source in ("frontier", "patrol") and
+                    now - self.goal_started < self.goal_commitment):
+                committed = self.world_to_cell(*self.current_goal_world)
+                committed = self.nearest_traversable(committed, traversable, max_radius=5)
+                if committed is not None and committed in distance:
+                    goal = committed
+                    plan = self.reconstruct_path(goal, parent)
 
-            if self.completion_ready(now):
+            if goal is None or len(plan) < 2:
+                goal, plan = self.choose_frontier(pose, parent, distance, travel_distance, traversable)
+                goal_source = "frontier"
+                if goal is not None and len(plan) >= 2:
+                    self.no_frontier_cycles = 0
+                else:
+                    self.no_frontier_cycles += 1
+
+            if goal is None or len(plan) < 2:
+                goal = self.choose_patrol_goal(pose, parent, distance, travel_distance)
+                plan = self.reconstruct_path(goal, parent) if goal is not None else []
+                goal_source = "patrol"
+
+            if goal_source != "frontier" and self.completion_ready(now):
                 self.returning_home = True
                 goal, plan = self.choose_home_goal(parent, distance, traversable)
                 goal_source = "home"
                 self.status_pub.publish("exploration complete: returning home")
-            elif goal is None or len(plan) < 2:
-                goal = self.choose_patrol_goal(pose, parent, distance, travel_distance)
-                plan = self.reconstruct_path(goal, parent) if goal is not None else []
-                goal_source = "patrol"
         self.last_plan_time = rospy.Time.now()
         if goal is None or len(plan) < 2:
             self.current_plan = []
@@ -781,13 +923,14 @@ class ActiveSlamExplorer:
                 self.status_pub.publish("no reachable frontier or patrol waypoint")
             return False
         same_goal = (
-            self.current_goal_cell is not None and
+            self.current_goal_world is not None and
             math.hypot(
-                goal[0] - self.current_goal_cell[0],
-                goal[1] - self.current_goal_cell[1],
-            ) * self.map_msg.info.resolution < 0.65
+                self.cell_to_world(goal)[0] - self.current_goal_world[0],
+                self.cell_to_world(goal)[1] - self.current_goal_world[1],
+            ) < 0.65
         )
         self.current_goal_cell = goal
+        self.current_goal_world = self.cell_to_world(goal)
         self.current_goal_source = goal_source
         self.current_plan = plan
         if not same_goal:
@@ -838,6 +981,7 @@ class ActiveSlamExplorer:
             self.recovery_attempt = 0
         self.recovery_attempt += 1
         self.recovery_reason = reason
+        self.frontier_probe_active = False
         self.last_recovery_time = now
         self.maybe_blacklist_goal()
         self.remember_patrol_goal()
@@ -913,6 +1057,7 @@ class ActiveSlamExplorer:
             self.recovery_mode = None
             self.current_plan = []
             self.current_goal_cell = None
+            self.current_goal_world = None
             self.current_goal_source = None
             self.last_plan_time = rospy.Time(0)
             self.progress_pose = None
@@ -923,13 +1068,13 @@ class ActiveSlamExplorer:
     def maybe_blacklist_goal(self):
         if self.current_goal_cell is None or self.current_goal_source == "home":
             return
-        wx, wy = self.cell_to_world(self.current_goal_cell)
+        wx, wy = self.current_goal_world or self.cell_to_world(self.current_goal_cell)
         self.blacklist[(round(wx, 1), round(wy, 1))] = rospy.Time.now() + self.blacklist_seconds
 
     def remember_patrol_goal(self):
         if self.current_goal_cell is None or self.current_goal_source != "patrol":
             return
-        point = self.cell_to_world(self.current_goal_cell)
+        point = self.current_goal_world or self.cell_to_world(self.current_goal_cell)
         if not self.recent_patrol_goals or math.hypot(
                 point[0] - self.recent_patrol_goals[-1][0],
                 point[1] - self.recent_patrol_goals[-1][1]) > 0.3:
@@ -938,7 +1083,7 @@ class ActiveSlamExplorer:
     def goal_reached(self, pose):
         if self.current_goal_cell is None:
             return False
-        gx, gy = self.cell_to_world(self.current_goal_cell)
+        gx, gy = self.current_goal_world or self.cell_to_world(self.current_goal_cell)
         threshold = self.home_reached_distance if self.current_goal_source == "home" else self.goal_reached_distance
         return math.hypot(gx - pose[0], gy - pose[1]) < threshold
 
@@ -1068,6 +1213,7 @@ class ActiveSlamExplorer:
             rospy.logerr_throttle(1.0, "active slam control error: %s", exc)
             self.current_plan = []
             self.current_goal_cell = None
+            self.current_goal_world = None
             self.current_goal_source = None
             self.last_plan_time = rospy.Time(0)
             self.reset_spin_monitor()
@@ -1114,21 +1260,43 @@ class ActiveSlamExplorer:
             self.publish_cmd(Twist())
             return
 
+        probe_cmd = self.frontier_probe_command(pose)
+        if probe_cmd is not None:
+            self.publish_cmd(probe_cmd)
+            self.status_pub.publish(
+                "frontier deep probe %.2f %.2f" % (probe_cmd.linear.x, probe_cmd.angular.z)
+            )
+            return
+
         now = rospy.Time.now()
         if self.goal_reached(pose):
             reached_source = self.current_goal_source or "exploration"
             if reached_source == "home":
                 self.current_plan = []
                 self.current_goal_cell = None
+                self.current_goal_world = None
                 self.current_goal_source = None
                 self.mapping_completed = True
                 self.completed_pub.publish(True)
                 self.publish_cmd(Twist())
                 self.status_pub.publish("mapping completed: home reached")
+                self.finish_cartographer_trajectory()
+                return
+            should_probe = (
+                reached_source == "frontier" or
+                (reached_source == "patrol" and self.current_goal_cell is not None and
+                 self.unknown_cells_near(self.current_goal_cell) >= 5)
+            )
+            if should_probe and self.current_goal_cell is not None:
+                goal_cell = self.current_goal_cell
+                self.start_frontier_probe(pose, goal_cell)
+                self.publish_cmd(Twist())
+                self.status_pub.publish("%s reached: starting deep probe" % reached_source)
                 return
             self.remember_patrol_goal()
             self.current_plan = []
             self.current_goal_cell = None
+            self.current_goal_world = None
             self.current_goal_source = None
             self.last_plan_time = rospy.Time(0)
             self.status_pub.publish("%s goal reached" % reached_source)
@@ -1139,6 +1307,7 @@ class ActiveSlamExplorer:
             self.remember_patrol_goal()
             self.current_plan = []
             self.current_goal_cell = None
+            self.current_goal_world = None
             self.current_goal_source = None
             self.last_plan_time = rospy.Time(0)
             self.status_pub.publish("frontier timeout: replanning")

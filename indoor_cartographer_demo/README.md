@@ -37,8 +37,10 @@ of `move_base + explore_lite`. `active_slam_explorer.py` reads `/map`, `/scan`,
 and TF, runs reachable-frontier detection plus cost-aware Dijkstra planning in
 known free space, follows a lookahead
 point on that path, and falls back to fast open-space probing when the initial
-frontiers are too close. This keeps the loop small and responsive for short
-Cartographer mapping checks.
+frontiers are too close. Once a frontier is reached, a directed deep-probe
+phase continues toward nearby unknown cells instead of immediately selecting a
+different room. This keeps the loop small and responsive while improving the
+coverage of narrow corridors and room ends.
 
 The default profile is tuned for fast coverage: control commands are published
 at `24 Hz`, the cruise speed is `0.82 m/s`, and frontier scoring favors larger
@@ -52,8 +54,9 @@ When motion is blocked, recovery brakes, checks rear clearance, backs away,
 turns toward the more open side, probes forward, blacklists the failed frontier,
 and forces a fresh global frontier plan.
 
-The compact robot is approximately `0.34 m` long and `0.335 m` wide across the
-wheels. Planning uses a graded costmap on `/active_slam/costmap`: lethal cells
+The compact robot is approximately `0.28 m` long and `0.28 m` wide across the
+wheels. Its sky-blue wings are visual-only links without collision geometry, so
+they do not reduce access to narrow passages. Planning uses a graded costmap on `/active_slam/costmap`: lethal cells
 cover the physical footprint, while a wider decaying cost band keeps Dijkstra
 paths away from walls. RViz shows it as `Navigation Costmap` with low alpha so
 the occupancy map remains readable. Cartographer submaps, trajectory nodes, and
@@ -61,12 +64,19 @@ constraints remain available but disabled by default to avoid visual clutter.
 
 Exploration completion requires repeated plans with no useful reachable
 frontier, a minimum mapping runtime, a minimum accumulated travel distance, and
-a stable known-cell count. Patrol scoring uses a large unknown-area window and
-recorded visit positions to prefer rooms and corridors that have seen less
-coverage. The robot
+a stable known-cell count. Each bundled scene also has a minimum known-cell
+coverage gate, preventing a visually open apartment map from being accepted
+just because exploration temporarily stalls. Low-value patrol candidates
+cannot postpone return forever once those coverage gates are satisfied. Patrol
+scoring only counts unknown cells with a
+wall-free line of sight, so unknown space outside closed exterior walls cannot
+cause endless patrol while unfinished corridors and rooms remain eligible.
+Recorded visit positions prefer areas that have seen less coverage. The robot
 then plans back to its recorded start position. At home it publishes
 `/active_slam/completed=True` and continues publishing a zero `/cmd_vel`.
-Dead ends trigger a longer checked reverse before turning and replanning.
+It also finishes the Cartographer trajectory so the pose graph performs its
+final loop-closure optimization. Dead ends trigger a longer checked reverse
+before turning and replanning.
 
 If normal frontier clusters temporarily disappear, the explorer now selects a
 reachable patrol waypoint near unknown space and follows a BFS path instead of

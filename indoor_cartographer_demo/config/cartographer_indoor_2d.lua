@@ -49,11 +49,12 @@ TRAJECTORY_BUILDER_2D.motion_filter.max_angle_radians = math.rad(3.)
 TRAJECTORY_BUILDER_2D.submaps.num_range_data = 70
 
 POSE_GRAPH.optimization_problem.huber_scale = 1e1
-POSE_GRAPH.optimize_every_n_nodes = 60
-POSE_GRAPH.constraint_builder.sampling_ratio = 0.18
-POSE_GRAPH.constraint_builder.max_constraint_distance = 9.
-POSE_GRAPH.constraint_builder.min_score = 0.62
-POSE_GRAPH.constraint_builder.global_localization_min_score = 0.70
+POSE_GRAPH.optimize_every_n_nodes = 35
+POSE_GRAPH.constraint_builder.sampling_ratio = 0.30
+POSE_GRAPH.constraint_builder.max_constraint_distance = 12.
+POSE_GRAPH.constraint_builder.min_score = 0.58
+POSE_GRAPH.constraint_builder.global_localization_min_score = 0.65
 POSE_GRAPH.constraint_builder.log_matches = false
+POSE_GRAPH.global_sampling_ratio = 0.01
 
 return options
