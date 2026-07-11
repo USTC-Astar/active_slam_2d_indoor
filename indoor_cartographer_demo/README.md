@@ -51,12 +51,29 @@ When motion is blocked, recovery brakes, checks rear clearance, backs away,
 turns toward the more open side, probes forward, blacklists the failed frontier,
 and forces a fresh global frontier plan.
 
+The compact robot is approximately `0.34 m` long and `0.335 m` wide across the
+wheels. Planning uses a graded costmap on `/active_slam/costmap`: lethal cells
+cover the physical footprint, while a wider decaying cost band keeps Dijkstra
+paths away from walls. The RViz costmap display is disabled by default so it
+does not cover the occupancy map; enable `Active SLAM Costmap` only when tuning.
+
+Exploration completion requires repeated plans with no useful reachable
+frontier, a minimum mapping runtime, and a stable known-cell count. The robot
+then plans back to its recorded start position. At home it publishes
+`/active_slam/completed=True` and continues publishing a zero `/cmd_vel`.
+Dead ends trigger a longer checked reverse before turning and replanning.
+
 If normal frontier clusters temporarily disappear, the explorer now selects a
 reachable patrol waypoint near unknown space and follows a BFS path instead of
 rotating indefinitely. Target hysteresis prevents rapid left/right goal changes.
 The controller also detects high accumulated rotation with little translation
 and forces recovery. Map access is synchronized so occupancy-grid expansion
 cannot terminate the control timer and leave Gazebo executing a stale command.
+
+Cartographer receives strictly increasing odometry through
+`/cartographer/odom`; duplicate Gazebo timestamps are removed by
+`indoor_odom_filter.py`. RViz includes Cartographer submaps and trajectory nodes,
+with the denser constraint visualization available but disabled by default.
 
 Main Active SLAM topics:
 

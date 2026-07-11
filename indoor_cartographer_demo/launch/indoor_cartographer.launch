@@ -27,6 +27,9 @@
   <node name="robot_state_publisher" pkg="robot_state_publisher"
       type="robot_state_publisher" output="screen" />
 
+  <node name="indoor_odom_filter" pkg="indoor_cartographer_demo"
+      type="indoor_odom_filter.py" output="screen" />
+
   <node name="spawn_indoor_mapper_bot" pkg="indoor_cartographer_demo"
       type="indoor_spawn_or_replace_model.py" output="screen">
     <param name="model_name" value="indoor_mapper_bot" />
@@ -42,7 +45,7 @@
           -configuration_basename cartographer_indoor_2d.lua"
       output="screen">
     <remap from="scan" to="/scan" />
-    <remap from="odom" to="/odom" />
+    <remap from="odom" to="/cartographer/odom" />
   </node>
 
   <node name="cartographer_occupancy_grid_node" pkg="cartographer_ros"
@@ -87,7 +90,9 @@
     <param name="lookahead_distance" value="1.65" />
     <param name="min_local_target_distance" value="0.42" />
     <param name="goal_reached_distance" value="0.52" />
-    <param name="inflate_radius" value="0.31" />
+    <param name="inflate_radius" value="0.23" />
+    <param name="costmap_radius" value="0.52" />
+    <param name="costmap_weight" value="0.10" />
     <param name="min_frontier_cells" value="8" />
     <param name="min_frontier_path_distance" value="1.1" />
     <param name="frontier_gain_weight" value="2.8" />
@@ -98,6 +103,12 @@
     <param name="patrol_max_distance" value="4.8" />
     <param name="patrol_unknown_radius" value="5" />
     <param name="patrol_cell_stride" value="4" />
+    <param name="completion_no_frontier_cycles" value="6" />
+    <param name="completion_stable_seconds" value="12.0" />
+    <param name="completion_min_runtime" value="45.0" />
+    <param name="completion_known_growth_cells" value="20" />
+    <param name="home_reached_distance" value="0.48" />
+    <param name="home_timeout" value="90.0" />
     <param name="cruise_speed" value="0.82" />
     <param name="min_drive_speed" value="0.30" />
     <param name="max_angular_speed" value="2.05" />
@@ -109,16 +120,23 @@
     <param name="obstacle_clearance_weight" value="1.45" />
     <param name="heading_tracking_weight" value="2.15" />
     <param name="front_slow_distance" value="1.00" />
-    <param name="front_stop_distance" value="0.48" />
-    <param name="emergency_distance" value="0.32" />
-    <param name="side_stop_distance" value="0.34" />
-    <param name="rear_stop_distance" value="0.32" />
-    <param name="scan_self_filter_radius" value="0.20" />
+    <param name="front_stop_distance" value="0.40" />
+    <param name="emergency_distance" value="0.27" />
+    <param name="side_stop_distance" value="0.27" />
+    <param name="rear_stop_distance" value="0.27" />
+    <param name="robot_half_width" value="0.18" />
+    <param name="robot_front_radius" value="0.19" />
+    <param name="laser_offset_x" value="0.08" />
+    <param name="corridor_margin" value="0.045" />
+    <param name="scan_self_filter_radius" value="0.15" />
     <param name="blocked_timeout" value="1.8" />
     <param name="stuck_timeout" value="2.8" />
     <param name="backup_seconds" value="1.05" />
     <param name="turn_seconds" value="1.15" />
     <param name="probe_seconds" value="0.90" />
+    <param name="dead_end_front_distance" value="0.58" />
+    <param name="dead_end_side_distance" value="0.52" />
+    <param name="dead_end_backup_extra" value="0.55" />
     <param name="spin_timeout" value="5.0" />
     <param name="spin_min_angle" value="3.6" />
     <param name="spin_max_translation" value="0.35" />

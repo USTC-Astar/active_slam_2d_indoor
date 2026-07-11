@@ -11,7 +11,7 @@ options = {
   provide_odom_frame = false,
   publish_frame_projected_to_2d = true,
   use_pose_extrapolator = true,
-  use_odometry = false,
+  use_odometry = true,
   use_nav_sat = false,
   use_landmarks = false,
   num_laser_scans = 1,
@@ -41,10 +41,19 @@ TRAJECTORY_BUILDER_2D.real_time_correlative_scan_matcher.linear_search_window = 
 TRAJECTORY_BUILDER_2D.real_time_correlative_scan_matcher.angular_search_window = math.rad(20.)
 TRAJECTORY_BUILDER_2D.real_time_correlative_scan_matcher.translation_delta_cost_weight = 10.
 TRAJECTORY_BUILDER_2D.real_time_correlative_scan_matcher.rotation_delta_cost_weight = 1e-1
+TRAJECTORY_BUILDER_2D.ceres_scan_matcher.translation_weight = 20.
+TRAJECTORY_BUILDER_2D.ceres_scan_matcher.rotation_weight = 45.
+TRAJECTORY_BUILDER_2D.motion_filter.max_time_seconds = 0.5
+TRAJECTORY_BUILDER_2D.motion_filter.max_distance_meters = 0.12
+TRAJECTORY_BUILDER_2D.motion_filter.max_angle_radians = math.rad(3.)
+TRAJECTORY_BUILDER_2D.submaps.num_range_data = 70
 
-POSE_GRAPH.optimization_problem.huber_scale = 1e2
-POSE_GRAPH.optimize_every_n_nodes = 35
-POSE_GRAPH.constraint_builder.min_score = 0.55
-POSE_GRAPH.constraint_builder.global_localization_min_score = 0.60
+POSE_GRAPH.optimization_problem.huber_scale = 1e1
+POSE_GRAPH.optimize_every_n_nodes = 60
+POSE_GRAPH.constraint_builder.sampling_ratio = 0.18
+POSE_GRAPH.constraint_builder.max_constraint_distance = 9.
+POSE_GRAPH.constraint_builder.min_score = 0.62
+POSE_GRAPH.constraint_builder.global_localization_min_score = 0.70
+POSE_GRAPH.constraint_builder.log_matches = false
 
 return options

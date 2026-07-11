@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import collections
+import heapq
 import math
 import threading
 
@@ -9,7 +10,7 @@ from gazebo_msgs.msg import ContactsState
 from geometry_msgs.msg import Point, PoseStamped, Twist
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from sensor_msgs.msg import LaserScan
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
 from visualization_msgs.msg import Marker, MarkerArray
 
 
@@ -34,8 +35,12 @@ class ActiveSlamExplorer:
         self.path_pub = rospy.Publisher("/active_slam/path", Path, queue_size=1, latch=True)
         self.target_pub = rospy.Publisher("/active_slam/target", PoseStamped, queue_size=1, latch=True)
         self.frontier_pub = rospy.Publisher("/active_slam/frontiers", MarkerArray, queue_size=1, latch=True)
+        self.costmap_pub = rospy.Publisher("/active_slam/costmap", OccupancyGrid, queue_size=1, latch=True)
+        self.completed_pub = rospy.Publisher("/active_slam/completed", Bool, queue_size=1, latch=True)
 
         self.map_lock = threading.RLock()
+        self.last_known_cell_count = 0
+        self.last_map_growth_time = rospy.Time.now()
         self.map_sub = rospy.Subscriber("/map", OccupancyGrid, self.map_callback, queue_size=1)
         self.scan_sub = rospy.Subscriber("/scan", LaserScan, self.scan_callback, queue_size=1)
         self.odom_sub = rospy.Subscriber("/odom", Odometry, self.odom_callback, queue_size=1)
@@ -57,6 +62,8 @@ class ActiveSlamExplorer:
         self.free_threshold = int(rospy.get_param("~free_threshold", 35))
         self.occupied_threshold = int(rospy.get_param("~occupied_threshold", 58))
         self.inflate_radius = rospy.get_param("~inflate_radius", 0.22)
+        self.costmap_radius = rospy.get_param("~costmap_radius", 0.52)
+        self.costmap_weight = rospy.get_param("~costmap_weight", 0.10)
         self.min_frontier_cells = int(rospy.get_param("~min_frontier_cells", 10))
         self.min_frontier_path_distance = rospy.get_param("~min_frontier_path_distance", 1.2)
         self.frontier_gain_weight = rospy.get_param("~frontier_gain_weight", 2.4)
@@ -68,6 +75,12 @@ class ActiveSlamExplorer:
         self.patrol_max_distance = rospy.get_param("~patrol_max_distance", 5.0)
         self.patrol_unknown_radius = int(rospy.get_param("~patrol_unknown_radius", 5))
         self.patrol_cell_stride = int(rospy.get_param("~patrol_cell_stride", 4))
+        self.completion_no_frontier_cycles = int(rospy.get_param("~completion_no_frontier_cycles", 6))
+        self.completion_stable_seconds = rospy.Duration(rospy.get_param("~completion_stable_seconds", 12.0))
+        self.completion_min_runtime = rospy.Duration(rospy.get_param("~completion_min_runtime", 45.0))
+        self.completion_known_growth_cells = int(rospy.get_param("~completion_known_growth_cells", 20))
+        self.home_reached_distance = rospy.get_param("~home_reached_distance", 0.48)
+        self.home_timeout = rospy.Duration(rospy.get_param("~home_timeout", 90.0))
         self.max_bfs_cells = int(rospy.get_param("~max_bfs_cells", 90000))
         self.replan_interval = rospy.Duration(rospy.get_param("~replan_interval", 2.8))
         self.goal_timeout = rospy.Duration(rospy.get_param("~goal_timeout", 16.0))
@@ -109,6 +122,9 @@ class ActiveSlamExplorer:
         self.recovery_reset_seconds = rospy.Duration(rospy.get_param("~recovery_reset_seconds", 12.0))
         self.backup_speed = rospy.get_param("~backup_speed", 0.30)
         self.recovery_turn_speed = rospy.get_param("~recovery_turn_speed", 1.25)
+        self.dead_end_front_distance = rospy.get_param("~dead_end_front_distance", 0.58)
+        self.dead_end_side_distance = rospy.get_param("~dead_end_side_distance", 0.52)
+        self.dead_end_backup_extra = rospy.Duration(rospy.get_param("~dead_end_backup_extra", 0.55))
         self.spin_timeout = rospy.Duration(rospy.get_param("~spin_timeout", 4.2))
         self.spin_min_angle = rospy.get_param("~spin_min_angle", 4.5)
         self.spin_max_translation = rospy.get_param("~spin_max_translation", 0.16)
@@ -124,6 +140,7 @@ class ActiveSlamExplorer:
         self.recovery_until = rospy.Time(0)
         self.recovery_turn_sign = 1.0
         self.recovery_attempt = 0
+        self.recovery_reason = ""
         self.last_recovery_time = rospy.Time(0)
         self.blocked_since = None
         self.blocked_turn_sign = 1.0
@@ -132,12 +149,25 @@ class ActiveSlamExplorer:
         self.spin_start_position = None
         self.spin_last_yaw = None
         self.spin_accumulated_angle = 0.0
+        self.home_position = None
+        self.home_yaw = 0.0
+        self.mapping_start_time = None
+        self.no_frontier_cycles = 0
+        self.last_frontier_cell_count = 0
+        self.returning_home = False
+        self.mapping_completed = False
+        self.completed_pub.publish(False)
 
         self.timer = rospy.Timer(rospy.Duration(1.0 / max(1.0, self.control_rate)), self.update)
 
     def map_callback(self, msg):
         with self.map_lock:
             self.map_msg = msg
+            known_cells = sum(1 for value in msg.data if value >= 0)
+            growth_threshold = getattr(self, "completion_known_growth_cells", 20)
+            if known_cells > self.last_known_cell_count + growth_threshold:
+                self.last_map_growth_time = rospy.Time.now()
+            self.last_known_cell_count = max(self.last_known_cell_count, known_cells)
 
     def scan_callback(self, msg):
         self.scan = msg
@@ -321,7 +351,7 @@ class ActiveSlamExplorer:
     def index(self, cell):
         return cell[1] * self.map_msg.info.width + cell[0]
 
-    def build_traversable(self):
+    def build_navigation_grid(self):
         width = self.map_msg.info.width
         height = self.map_msg.info.height
         data = self.map_msg.data
@@ -333,18 +363,58 @@ class ActiveSlamExplorer:
             if value >= self.occupied_threshold:
                 obstacles.append((index % width, index // width))
 
-        radius = int(math.ceil(self.inflate_radius / max(self.map_msg.info.resolution, 0.01)))
-        if radius <= 0:
-            return traversable
+        resolution = max(self.map_msg.info.resolution, 0.01)
+        lethal_cells = self.inflate_radius / resolution
+        cost_cells = max(lethal_cells + 1.0, self.costmap_radius / resolution)
+        obstacle_distance = [10 ** 9] * len(data)
+        queue = collections.deque()
         for ox, oy in obstacles:
-            for dy in range(-radius, radius + 1):
-                for dx in range(-radius, radius + 1):
-                    if dx * dx + dy * dy > radius * radius:
-                        continue
-                    nx, ny = ox + dx, oy + dy
-                    if self.inside(nx, ny):
-                        traversable[ny * width + nx] = False
-        return traversable
+            index = oy * width + ox
+            obstacle_distance[index] = 0
+            queue.append((ox, oy))
+
+        neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        while queue:
+            cx, cy = queue.popleft()
+            index = cy * width + cx
+            distance_cells = obstacle_distance[index]
+            if distance_cells >= cost_cells:
+                continue
+            for dx, dy in neighbors:
+                nx, ny = cx + dx, cy + dy
+                if not self.inside(nx, ny):
+                    continue
+                nxt = ny * width + nx
+                candidate = distance_cells + 1
+                if candidate < obstacle_distance[nxt] and candidate <= cost_cells:
+                    obstacle_distance[nxt] = candidate
+                    queue.append((nx, ny))
+
+        costs = [0] * len(data)
+        visualization = [-1] * len(data)
+        span = max(1.0, cost_cells - lethal_cells)
+        for index, value in enumerate(data):
+            if value < 0:
+                continue
+            distance_cells = obstacle_distance[index]
+            if value >= self.occupied_threshold or distance_cells <= lethal_cells:
+                traversable[index] = False
+                costs[index] = 100
+                visualization[index] = 100
+            elif distance_cells < cost_cells:
+                ratio = (cost_cells - distance_cells) / span
+                costs[index] = int(clamp(99.0 * ratio * ratio, 1.0, 99.0))
+                visualization[index] = costs[index]
+            else:
+                visualization[index] = 0
+
+        costmap = OccupancyGrid()
+        costmap.header = self.map_msg.header
+        costmap.header.stamp = rospy.Time.now()
+        costmap.info = self.map_msg.info
+        costmap.data = visualization
+        self.costmap_pub.publish(costmap)
+        return traversable, costs
 
     def nearest_traversable(self, start, traversable, max_radius=12):
         sx, sy = start
@@ -358,19 +428,22 @@ class ActiveSlamExplorer:
                         return cell
         return None
 
-    def bfs(self, start, traversable):
+    def dijkstra(self, start, traversable, costs):
         width = self.map_msg.info.width
         parent = {}
         distance = {start: 0}
-        queue = collections.deque([start])
+        travel_distance = {start: 0}
+        queue = [(0, start)]
         neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
         expansions = 0
         while queue and expansions < self.max_bfs_cells:
-            cell = queue.popleft()
+            current_cost, cell = heapq.heappop(queue)
+            if current_cost != distance.get(cell):
+                continue
             expansions += 1
             for dx, dy in neighbors:
                 nxt = cell[0] + dx, cell[1] + dy
-                if not self.inside(*nxt) or nxt in distance:
+                if not self.inside(*nxt):
                     continue
                 if not traversable[nxt[1] * width + nxt[0]]:
                     continue
@@ -381,10 +454,16 @@ class ActiveSlamExplorer:
                         continue
                     if not traversable[self.index(side_a)] or not traversable[self.index(side_b)]:
                         continue
+                step = 14 if dx and dy else 10
+                penalty = int(costs[nxt[1] * width + nxt[0]] * self.costmap_weight)
+                candidate = current_cost + step + penalty
+                if candidate >= distance.get(nxt, 10 ** 18):
+                    continue
                 parent[nxt] = cell
-                distance[nxt] = distance[cell] + (14 if dx and dy else 10)
-                queue.append(nxt)
-        return parent, distance
+                distance[nxt] = candidate
+                travel_distance[nxt] = travel_distance[cell] + step
+                heapq.heappush(queue, (candidate, nxt))
+        return parent, distance, travel_distance
 
     def is_frontier(self, cell, traversable):
         if not traversable[self.index(cell)]:
@@ -442,7 +521,7 @@ class ActiveSlamExplorer:
             ),
         )
 
-    def choose_frontier(self, pose, parent, distance, traversable):
+    def choose_frontier(self, pose, parent, distance, travel_distance, traversable):
         now = rospy.Time.now()
         for key, expiry in list(self.blacklist.items()):
             if now > expiry:
@@ -451,6 +530,7 @@ class ActiveSlamExplorer:
         reachable = list(distance.keys())
         frontiers = [cell for cell in reachable if self.is_frontier(cell, traversable)]
         clusters = self.cluster_frontiers(frontiers)
+        self.last_frontier_cell_count = sum(len(cluster) for cluster in clusters)
         self.publish_frontiers(clusters)
         if not clusters:
             return None, []
@@ -466,7 +546,7 @@ class ActiveSlamExplorer:
             key = (round(wx, 1), round(wy, 1))
             if key in self.blacklist:
                 continue
-            path_cost = distance.get(target, 10 ** 9) * self.map_msg.info.resolution / 10.0
+            path_cost = travel_distance.get(target, 10 ** 9) * self.map_msg.info.resolution / 10.0
             if path_cost < self.min_frontier_path_distance:
                 continue
             heading = math.atan2(wy - ry, wx - rx)
@@ -493,7 +573,7 @@ class ActiveSlamExplorer:
             return None, []
         return best, self.reconstruct_path(best, parent)
 
-    def choose_patrol_goal(self, pose, parent, distance):
+    def choose_patrol_goal(self, pose, parent, distance, travel_distance):
         """Pick a reachable free-space waypoint when frontier clusters are weak."""
         rx, ry, yaw = pose
         data = self.map_msg.data
@@ -503,10 +583,10 @@ class ActiveSlamExplorer:
         best = None
         best_score = -float("inf")
 
-        for cell, grid_cost in distance.items():
+        for cell in distance:
             if cell[0] % stride or cell[1] % stride:
                 continue
-            path_cost = grid_cost * self.map_msg.info.resolution / 10.0
+            path_cost = travel_distance[cell] * self.map_msg.info.resolution / 10.0
             if path_cost < self.patrol_min_distance or path_cost > self.patrol_max_distance:
                 continue
 
@@ -550,6 +630,24 @@ class ActiveSlamExplorer:
                 best_score = score
                 best = cell
         return best
+
+    def choose_home_goal(self, parent, distance, traversable):
+        if self.home_position is None:
+            return None, []
+        home = self.world_to_cell(self.home_position[0], self.home_position[1])
+        home = self.nearest_traversable(home, traversable, max_radius=20)
+        if home is None or home not in distance:
+            return None, []
+        return home, self.reconstruct_path(home, parent)
+
+    def completion_ready(self, now):
+        if self.mapping_start_time is None:
+            return False
+        return (
+            self.no_frontier_cycles >= self.completion_no_frontier_cycles and
+            now - self.mapping_start_time >= self.completion_min_runtime and
+            now - self.last_map_growth_time >= self.completion_stable_seconds
+        )
 
     def publish_frontiers(self, clusters):
         msg = MarkerArray()
@@ -606,23 +704,41 @@ class ActiveSlamExplorer:
         if self.map_msg is None:
             return False
         start = self.world_to_cell(pose[0], pose[1])
-        traversable = self.build_traversable()
+        traversable, costs = self.build_navigation_grid()
         start = self.nearest_traversable(start, traversable)
         if start is None:
             self.status_pub.publish("no traversable start cell")
             return False
-        parent, distance = self.bfs(start, traversable)
-        goal, plan = self.choose_frontier(pose, parent, distance, traversable)
-        goal_source = "frontier"
-        if goal is None or len(plan) < 2:
-            goal = self.choose_patrol_goal(pose, parent, distance)
-            plan = self.reconstruct_path(goal, parent) if goal is not None else []
-            goal_source = "patrol"
+        parent, distance, travel_distance = self.dijkstra(start, traversable, costs)
+        now = rospy.Time.now()
+        if self.returning_home:
+            goal, plan = self.choose_home_goal(parent, distance, traversable)
+            goal_source = "home"
+        else:
+            goal, plan = self.choose_frontier(pose, parent, distance, travel_distance, traversable)
+            goal_source = "frontier"
+            if goal is None or len(plan) < 2:
+                self.no_frontier_cycles += 1
+            else:
+                self.no_frontier_cycles = 0
+
+            if self.completion_ready(now):
+                self.returning_home = True
+                goal, plan = self.choose_home_goal(parent, distance, traversable)
+                goal_source = "home"
+                self.status_pub.publish("exploration complete: returning home")
+            elif goal is None or len(plan) < 2:
+                goal = self.choose_patrol_goal(pose, parent, distance, travel_distance)
+                plan = self.reconstruct_path(goal, parent) if goal is not None else []
+                goal_source = "patrol"
         self.last_plan_time = rospy.Time.now()
         if goal is None or len(plan) < 2:
             self.current_plan = []
             self.local_target = None
-            self.status_pub.publish("no reachable frontier or patrol waypoint")
+            if self.returning_home:
+                self.status_pub.publish("returning home: waiting for a reachable path")
+            else:
+                self.status_pub.publish("no reachable frontier or patrol waypoint")
             return False
         same_goal = (
             self.current_goal_cell is not None and
@@ -681,6 +797,7 @@ class ActiveSlamExplorer:
         if now - self.last_recovery_time > self.recovery_reset_seconds:
             self.recovery_attempt = 0
         self.recovery_attempt += 1
+        self.recovery_reason = reason
         self.last_recovery_time = now
         self.maybe_blacklist_goal()
         self.remember_patrol_goal()
@@ -718,7 +835,10 @@ class ActiveSlamExplorer:
             if self.rear_min() > self.rear_stop_distance:
                 self.recovery_mode = "backup"
                 backup_scale = 1.0 + 0.18 * min(self.recovery_attempt - 1, 2)
-                self.recovery_until = now + rospy.Duration(self.backup_seconds.to_sec() * backup_scale)
+                backup_duration = self.backup_seconds.to_sec() * backup_scale
+                if "dead end" in self.recovery_reason:
+                    backup_duration += self.dead_end_backup_extra.to_sec()
+                self.recovery_until = now + rospy.Duration(backup_duration)
             else:
                 self.begin_recovery_turn(now)
         if self.recovery_mode == "backup":
@@ -761,7 +881,7 @@ class ActiveSlamExplorer:
         return None
 
     def maybe_blacklist_goal(self):
-        if self.current_goal_cell is None:
+        if self.current_goal_cell is None or self.current_goal_source == "home":
             return
         wx, wy = self.cell_to_world(self.current_goal_cell)
         self.blacklist[(round(wx, 1), round(wy, 1))] = rospy.Time.now() + self.blacklist_seconds
@@ -779,7 +899,8 @@ class ActiveSlamExplorer:
         if self.current_goal_cell is None:
             return False
         gx, gy = self.cell_to_world(self.current_goal_cell)
-        return math.hypot(gx - pose[0], gy - pose[1]) < self.goal_reached_distance
+        threshold = self.home_reached_distance if self.current_goal_source == "home" else self.goal_reached_distance
+        return math.hypot(gx - pose[0], gy - pose[1]) < threshold
 
     def progress_failed(self, pose):
         now = rospy.Time.now()
@@ -810,6 +931,13 @@ class ActiveSlamExplorer:
         desired_speed = clamp(self.cruise_speed * turn_factor, self.min_drive_speed, self.cruise_speed)
         if distance < self.min_local_target_distance:
             desired_speed = min(desired_speed, max(0.12, distance))
+        if turn_abs > 2.15:
+            front = self.heading_clearance(0.0)
+            left = self.sector_min(0.38, 1.40)
+            right = self.sector_min(-1.40, -0.38)
+            if front < self.dead_end_front_distance or min(left, right) < self.dead_end_side_distance:
+                self.start_recovery("dead end turn-around")
+                return Twist()
         if turn_abs > 2.25:
             desired_speed = 0.0
         return self.local_avoidance_command(bearing, desired_speed)
@@ -820,6 +948,10 @@ class ActiveSlamExplorer:
         front_clearance = self.heading_clearance(0.0)
         left = self.sector_min(0.38, 1.40)
         right = self.sector_min(-1.40, -0.38)
+        if (front_clearance < self.dead_end_front_distance and
+                left < self.dead_end_side_distance and right < self.dead_end_side_distance):
+            self.start_recovery("dead end blocked")
+            return cmd
         if front_clearance < self.emergency_distance:
             now = rospy.Time.now()
             if self.blocked_since is None:
@@ -919,6 +1051,17 @@ class ActiveSlamExplorer:
 
     def update_navigation(self, pose):
 
+        if self.home_position is None:
+            self.home_position = pose[:2]
+            self.home_yaw = pose[2]
+            self.mapping_start_time = rospy.Time.now()
+            self.last_map_growth_time = rospy.Time.now()
+
+        if self.mapping_completed:
+            self.publish_cmd(Twist())
+            self.status_pub.publish("mapping completed: home reached")
+            return
+
         if rospy.Time.now() - self.last_contact_time < self.contact_hold:
             self.start_recovery("physical contact")
             self.publish_cmd(Twist())
@@ -932,6 +1075,15 @@ class ActiveSlamExplorer:
         now = rospy.Time.now()
         if self.goal_reached(pose):
             reached_source = self.current_goal_source or "exploration"
+            if reached_source == "home":
+                self.current_plan = []
+                self.current_goal_cell = None
+                self.current_goal_source = None
+                self.mapping_completed = True
+                self.completed_pub.publish(True)
+                self.publish_cmd(Twist())
+                self.status_pub.publish("mapping completed: home reached")
+                return
             self.remember_patrol_goal()
             self.current_plan = []
             self.current_goal_cell = None
@@ -939,7 +1091,8 @@ class ActiveSlamExplorer:
             self.last_plan_time = rospy.Time(0)
             self.status_pub.publish("%s goal reached" % reached_source)
 
-        if self.current_goal_cell is not None and now - self.goal_started > self.goal_timeout:
+        active_timeout = self.home_timeout if self.current_goal_source == "home" else self.goal_timeout
+        if self.current_goal_cell is not None and now - self.goal_started > active_timeout:
             self.maybe_blacklist_goal()
             self.remember_patrol_goal()
             self.current_plan = []
@@ -955,10 +1108,15 @@ class ActiveSlamExplorer:
             return
 
         if now - self.last_plan_time > self.replan_interval:
+            self.publish_cmd(Twist())
             self.replan(pose)
 
         target = self.select_local_target(pose)
         if target is None:
+            if self.returning_home:
+                self.publish_cmd(Twist())
+                self.status_pub.publish("returning home: replanning")
+                return
             cmd = self.open_space_command()
             self.publish_cmd(cmd)
             if self.recovery_mode is None:
